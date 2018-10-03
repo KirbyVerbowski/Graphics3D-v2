@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Graphics3D_v2
 {
     [Flags]
-    public enum TransformOps { location = 1, scale = 2, rotation = 4, all = 7 }
+    public enum TransformOps { Location = 1, Scale = 2, Rotation = 4, All = 7 }
 
     public delegate void TransformUpdateDelegate(TransformOps op);
 
@@ -16,17 +16,17 @@ namespace Graphics3D_v2
         private Vector3 _Location;
         public Vector3 Location {
             get { return _Location; }
-            set { _Location = value; transformUpdate(TransformOps.location); }
+            set { _Location = value; transformUpdate(TransformOps.Location); }
         }
         private Vector3 _Scale;
         public Vector3 Scale {
             get { return _Scale; }
-            set { _Scale = value; transformUpdate(TransformOps.scale); }
+            set { _Scale = value; transformUpdate(TransformOps.Scale); }
         }
         private Quaternion _Rotation;
         public Quaternion Rotation {
             get { return _Rotation; }
-            set { _Rotation = value; transformUpdate(TransformOps.rotation); }
+            set { _Rotation = value; transformUpdate(TransformOps.Rotation); }
         }
         public TransformUpdateDelegate transformUpdate;
 
@@ -35,21 +35,18 @@ namespace Graphics3D_v2
             _Location = location;
             _Scale = scale;
             _Rotation = rotation;
-            transformUpdate(TransformOps.all);
         }
         public Transform(Vector3 location, Vector3 scale)
         {
             _Location = location;
             _Scale = scale;
             _Rotation = Quaternion.Identity;
-            transformUpdate(TransformOps.location | TransformOps.scale);
         }
         public Transform(Vector3 location)
         {
             _Location = location;
             _Scale = Vector3.One;
             _Rotation = Quaternion.Identity;
-            transformUpdate(TransformOps.location);
         }
         public Transform()
         {
@@ -112,7 +109,7 @@ namespace Graphics3D_v2
             TransformedMesh = new Mesh(mesh);
             this.transform = transform;
             this.transform.transformUpdate = UpdateMesh;
-            this.transform.transformUpdate.Invoke(TransformOps.all);
+            this.transform.transformUpdate.Invoke(TransformOps.All);
         }
         public Object3D(Mesh mesh)
         {
@@ -120,7 +117,7 @@ namespace Graphics3D_v2
             TransformedMesh = new Mesh(mesh);
             transform = new Transform();
             transform.transformUpdate = UpdateMesh;
-            transform.transformUpdate.Invoke(TransformOps.all);
+            transform.transformUpdate.Invoke(TransformOps.All);
         }
         public Object3D(Transform transform)
         {
@@ -144,7 +141,7 @@ namespace Graphics3D_v2
                 TransformedMesh.vertices[i] = transform.Rotation.RotateVector3(mesh.vertices[i] * transform.Scale) + transform.Location;
             }
 
-            if((ops & TransformOps.rotation) != 0)
+            if((ops & TransformOps.Rotation) != 0)
             {
                 TransformedMesh.CalculateFaceNormals();
             }
