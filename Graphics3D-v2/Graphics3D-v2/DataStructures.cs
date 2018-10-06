@@ -305,7 +305,7 @@ namespace Graphics3D_v2
                     throw new Exception("Faces must have at least 3 vertices!");
                 }
                 //Assumes the convention that vertices will construct a face in a counter-clockwise manner
-                faceNormals[i] = Vector3.CrossProduct(vertices[faces[i][1]] - vertices[faces[i][0]], vertices[faces[i][faces[i].Length - 1]] - vertices[faces[i][0]]).normalized;
+                faceNormals[i] = Vector3.Cross(vertices[faces[i][1]] - vertices[faces[i][0]], vertices[faces[i][faces[i].Length - 1]] - vertices[faces[i][0]]).Normalized;
             }
         }
 
