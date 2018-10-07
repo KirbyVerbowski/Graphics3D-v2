@@ -153,50 +153,146 @@ namespace Graphics3D_v2
             return true;
         }
 
-        public void Render(Graphics g)
+        public bool Render(DirectBitmap b)
         {
+            System.Diagnostics.Debug.Assert(b.Width == renderWidth && b.Height == renderHeight);
+
             Mesh mesh;
-            Vector3 camPos = transform.Location, vert1, vert2;
-            Vector3 e1, e2; //Normalized between -1 and 1
+            Vector3 camPos = transform.Location, vert1, vert2, vert3;
+            Vector3 e1, e2, e3; //Normalized between -1 and 1
+            Vector3 beforeClip1, beforeClip2, beforeClip3;
             Vector3 coordTransform = new Vector3(renderWidth / 2, 0, renderHeight / 2);
+            Vector3 normToScreen = new Vector3(renderWidth / 2, 1, renderHeight / 2);
             float screenNormCoeffX = 1 / (projectionDistance * (float)Math.Tan(horizFOV));
             float screenNormCoeffZ = 1 / (projectionDistance * (float)Math.Tan(vertFOV));
 
-            foreach(Object3D obj in renderQueue)
+            if(renderMode == RenderMode.Wireframe)
             {
-                mesh = obj.TransformedMesh;
-                foreach(int[] verts in mesh.edges)
+                foreach (Object3D obj in renderQueue)
                 {
-                    //Put vertecies in coordinates relative to the camera
-                    vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[verts[0]] - camPos);
-                    vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[verts[1]] - camPos);
-
-
-                    e1.x = (projectionDistance * vert1.x) / vert1.y;           //Using similar triangles to project the verts onto the camera plane 
-                    e1.z = (projectionDistance * vert1.z) / vert1.y;
-                    e2.x = (projectionDistance * vert2.x) / vert2.y;                    
-                    e2.z = (projectionDistance * vert2.z) / vert2.y;            
-                    e1.y = vert1.y;
-                    e2.y = vert2.y;                 //Don't change e.y because we will use it for z-buffering later
-
-                    e1.x *= screenNormCoeffX;
-                    e1.z *= screenNormCoeffZ;   //Bound x and z to the range [-1,1]
-                    e2.x *= screenNormCoeffX;
-                    e2.z *= screenNormCoeffZ;
-
-                    //Do Edge clipping
-                    if(NearFarClip(ref e1, ref e2))
+                    mesh = obj.TransformedMesh;
+                    for(int i = 0; i < mesh.edges.GetLength(0); i++)
                     {
-                        if(edgeClip(ref e1, ref e2))
+                        //Put vertecies in coordinates relative to the camera
+                        vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.edges[i, 0]] - camPos);
+                        vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.edges[i, 1]] - camPos);
+
+                        e1.x = (projectionDistance * vert1.x) / vert1.y;           //Using similar triangles to project the verts onto the camera plane 
+                        e1.z = (projectionDistance * vert1.z) / vert1.y;
+                        e2.x = (projectionDistance * vert2.x) / vert2.y;
+                        e2.z = (projectionDistance * vert2.z) / vert2.y;
+                        e1.y = vert1.y;
+                        e2.y = vert2.y;                 //Don't change e.y because we will use it for z-buffering later
+
+                        e1.x *= screenNormCoeffX;
+                        e1.z *= screenNormCoeffZ;   //Bound x and z to the range [-1,1]
+                        e2.x *= screenNormCoeffX;
+                        e2.z *= screenNormCoeffZ;
+
+                        //Do Edge clipping
+                        if (NearFarClip(ref e1, ref e2))
                         {
-                            g.DrawLine(Pens.Black, e1.x, e1.z, e2.x, e2.z);
+                            if (edgeClip(ref e1, ref e2))
+                            {
+                                e1 *= normToScreen; // x in [-width/2, width/2] z in [-height/2, height/2]
+                                e2 *= normToScreen;
+
+                                e1 = new Vector3(renderWidth / 2f + e1.x, e1.y, renderHeight - (renderHeight / 2f + e1.z)); //x in [0,width] z in [0,height]
+                                e2 = new Vector3(renderWidth / 2f + e2.x, e2.y, renderHeight - (renderHeight / 2f + e2.z));
+                                foreach (Tuple<int, int> pt in GetLinePixels(e1, e2))
+                                {
+                                    b.SetPixel(pt.Item1, pt.Item2, Color.Black);
+
+                                }
+
+                            }
                         }
-                    }    
-
+                    }
                 }
-
                 
             }
+            else  //Solid shading
+            {
+                foreach (Object3D obj in renderQueue)
+                {
+                    mesh = obj.TransformedMesh;
+                    for(int face = 0; face < mesh.faces.GetLength(0); face++)
+                    {
+                        vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 0]] - camPos);
+                        vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 1]] - camPos);
+                        vert3 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 2]] - camPos);
+
+                        e1.x = (projectionDistance * vert1.x) / vert1.y;           //Using similar triangles to project the verts onto the camera plane 
+                        e1.z = (projectionDistance * vert1.z) / vert1.y;
+                        e2.x = (projectionDistance * vert2.x) / vert2.y;
+                        e2.z = (projectionDistance * vert2.z) / vert2.y;
+                        e3.x = (projectionDistance * vert3.x) / vert3.y;
+                        e3.z = (projectionDistance * vert3.z) / vert3.y;
+
+                        e1.y = vert1.y;
+                        e2.y = vert2.y;                 //Don't change e.y because we will use it for z-buffering later
+                        e3.y = vert3.y;
+
+                        e1.x *= screenNormCoeffX;
+                        e1.z *= screenNormCoeffZ;   //Bound x and z to the range [-1,1]
+                        e2.x *= screenNormCoeffX;
+                        e2.z *= screenNormCoeffZ;
+                        e3.x *= screenNormCoeffX;
+                        e3.z *= screenNormCoeffZ;
+
+                        beforeClip1 = e1;
+                        beforeClip2 = e2;
+                        beforeClip3 = e3;
+                        if (NearFarClip(ref e1, ref e2)) //Gonna have to do something new here to clip the triangle 
+                        {
+                            if (edgeClip(ref e1, ref e2))
+                            {
+                                e1 *= normToScreen; // x in [-width/2, width/2] z in [-height/2, height/2]
+                                e2 *= normToScreen;
+
+                                e1 = new Vector3(renderWidth / 2f + e1.x, e1.y, renderHeight - (renderHeight / 2f + e1.z)); //x in [0,width] z in [0,height]
+                                e2 = new Vector3(renderWidth / 2f + e2.x, e2.y, renderHeight - (renderHeight / 2f + e2.z));
+                                foreach (Tuple<int, int> pt in GetLinePixels(e1, e2))
+                                {
+                                    b.SetPixel(pt.Item1, pt.Item2, Color.Black);
+
+                                }
+
+                            }
+                        }
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        Tuple<int, int>[] GetLinePixels(Vector3 from, Vector3 to)
+        {
+            List<Tuple<int, int>> points = new List<Tuple<int, int>>();
+            float slope = (to.z - from.z) / (to.x - from.x);
+            int sx, sz, ex, ez;
+            if(from.x < to.x)
+            {
+                sx = (int)Math.Round(from.x); sz = (int)Math.Round(from.z);
+                ex = (int)Math.Round(to.x); ez = (int)Math.Round(to.z);
+            }
+            else
+            {
+                ex = (int)Math.Round(from.x); ez = (int)Math.Round(from.z);
+                sx = (int)Math.Round(to.x); sz = (int)Math.Round(to.z);
+            }
+            if(sx == ex)
+            {
+                return points.ToArray();
+            }
+            
+            points.Add(new Tuple<int, int>(sx, sz));
+            for(int x = sx+1; x < ex; x++)
+            {
+                points.Add(new Tuple<int, int>(x, (int)Math.Round(slope * (x - sx) + sz)));
+            }
+            return points.ToArray();
         }
 
         

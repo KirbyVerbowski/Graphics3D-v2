@@ -282,12 +282,12 @@ namespace Graphics3D_v2
         }
     }
 
-    //Mesh structure is immutable
+    //Mesh structure is immutable. Only handles triangles. Absolutely no quads or ngons.
     public class Mesh
     {
         public readonly Vector3[] vertices;
-        public readonly int[][] edges;
-        public readonly int[][] faces; //list of vetex indices       
+        public readonly int[,] edges;
+        public readonly int[,] faces; //list of vetex indices       
         public readonly string name;
         public Vector3[] faceNormals;
 
@@ -297,37 +297,45 @@ namespace Graphics3D_v2
             {
                 throw new Exception("This mesh has no faces!");
             }
-            faceNormals = new Vector3[faces.Length];
-            for (int i = 0; i < faces.Length; i++)
+            faceNormals = new Vector3[faces.GetLength(0)];
+            for (int i = 0; i < faces.GetLength(0); i++)
             {
-                if (faces[i].Length < 3)
-                {
-                    throw new Exception("Faces must have at least 3 vertices!");
-                }
                 //Assumes the convention that vertices will construct a face in a counter-clockwise manner
-                faceNormals[i] = Vector3.Cross(vertices[faces[i][1]] - vertices[faces[i][0]], vertices[faces[i][faces[i].Length - 1]] - vertices[faces[i][0]]).Normalized;
+                faceNormals[i] = Vector3.Cross(vertices[faces[i,1]] - vertices[faces[i,0]], vertices[faces[i, 2]] - vertices[faces[i, 0]]).Normalized;
             }
         }
 
-        public Mesh(Vector3[] vertices, int[][] faces, int[][] edges, string name)
+        public Mesh(Vector3[] vertices, int[,] faces, int[,] edges, string name)
         {
             this.vertices = new Vector3[vertices.Length];
-            this.faces = new int[faces.Length][];
-            this.edges = new int[edges.Length][];
-            Array.Copy(vertices, this.vertices, vertices.Length);
-            Array.Copy(faces, this.faces, faces.Length);
-            Array.Copy(edges, this.edges, edges.Length);
+            this.faces = new int[faces.GetLength(0), 3];
+            this.edges = new int[edges.GetLength(0), 2];
+            for(int i = 0; i < this.faces.GetLength(0); i++)
+            {
+                for(int j = 0; j < 3; j++)
+                {
+                    this.faces[i, j] = faces[i, j];
+                }
+            }
+            for (int i = 0; i < this.edges.GetLength(0); i++)
+            {
+                for (int j = 0; j < 2; j++)
+                {
+                    this.edges[i, j] = edges[i, j];
+                }
+            }
+            for(int i = 0; i < this.vertices.Length; i++)
+            {
+                this.vertices[i] = vertices[i];
+            }
             this.name = name;
         }
         public Mesh(Mesh other)
         {
-            this.vertices = new Vector3[other.vertices.Length];
-            this.faces = new int[other.faces.Length][];
-            this.edges = new int[other.edges.Length][];
-            Array.Copy(other.vertices, this.vertices, vertices.Length);
-            Array.Copy(other.faces, this.faces, faces.Length);
-            Array.Copy(other.edges, this.edges, edges.Length);
-            this.name = other.name;
+            vertices = other.vertices.Clone() as Vector3[];
+            faces = other.faces.Clone() as int[,];
+            edges = other.edges.Clone() as int[,];
+            name = other.name;
         }
         public Mesh(string path)
         {
@@ -336,7 +344,7 @@ namespace Graphics3D_v2
             char[] lineCh;
             List<Vector3> vertices = new List<Vector3>();
             Vector3 temp = Vector3.Zero;
-            List<List<int>> faces = new List<List<int>>();
+            List<int[]> faces = new List<int[]>();
             List<int[]> edges = new List<int[]>();
             int face = 0;
             System.IO.StreamReader stream = new System.IO.StreamReader(path);
@@ -372,7 +380,7 @@ namespace Graphics3D_v2
                     case "f":
                         StringBuilder sb = new StringBuilder();
                         int j = 0;
-                        faces.Add(new List<int>());
+                        faces.Add(new int[3]);
                         for (int i = 1; i < words.Length; i++)
                         {
                             if (!words[i].Contains("/"))
@@ -390,7 +398,7 @@ namespace Graphics3D_v2
                             }
 
 
-                            faces[face].Add(int.Parse(sb.ToString()) - 1);
+                            faces[face][i-1] = (int.Parse(sb.ToString()) - 1);
                             if ((int.Parse(sb.ToString()) - 1) < 0)
                             {
                                 throw new Exception("Cannot parse negative-indexed files");
@@ -409,33 +417,47 @@ namespace Graphics3D_v2
             stream.Close();
 
             this.vertices = vertices.ToArray();
-            this.faces = new int[faces.Count][];
+            this.faces = new int[faces.Count, 3];
             for (int i = 0; i < faces.Count; i++)
             {
-                this.faces[i] = faces[i].ToArray();
+                for(int j = 0; j < 3; j++)
+                {
+                    this.faces[i, j] = faces[i][j];
+                }
+                
             }
 
             int current = 0;
-            for (int i = 0; i < this.faces.Length; i++)
+            for (int i = 0; i < this.faces.GetLength(0); i++)
             {
-                for (int j = 0; j < this.faces[i].Length - 1; j++)
+                for (int j = 0; j < 2; j++)
                 {
                     edges.Add(new int[2]);
-                    edges[current][0] = this.faces[i][j];
-                    edges[current][1] = this.faces[i][j + 1];
+                    edges[current][0] = this.faces[i, j];
+                    edges[current][1] = this.faces[i, j + 1];
                     current++;
                 }
-                if (this.faces[i].Length != 0)
+                if (this.faces.GetLength(1) != 0)
                 {
                     edges.Add(new int[2]);
-                    edges[current][0] = this.faces[i][0];
-                    edges[current][1] = this.faces[i][faces[i].Count - 1];
+                    edges[current][0] = this.faces[i, 0];
+                    edges[current][1] = this.faces[i, 2];
                     current++;
                 }
             }
 
-            this.edges = edges.ToArray();
+            this.edges = new int[edges.Count, 2];
+            for(int i = 0; i < edges.Count; i++)
+            {
+                for(int j = 0; j < 2; j++)
+                {
+                    this.edges[i, j] = edges[i][j];
+                }
+            }
             CalculateFaceNormals();
         }
     }
+
+
+
 }
