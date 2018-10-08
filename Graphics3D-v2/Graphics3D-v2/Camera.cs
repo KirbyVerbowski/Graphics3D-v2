@@ -287,6 +287,7 @@ namespace Graphics3D_v2
                             drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
                         }
 
+                        FillPolygon(drawPoints.ToArray(), b, depthBuffer);
                         foreach (Tuple<int, float, int> pt in GetPolygonPixels(drawPoints.ToArray()))
                         {
                             if(depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] == 0 || depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] > pt.Item2)
@@ -308,12 +309,12 @@ namespace Graphics3D_v2
     //   |
     //   \/
     //   +z
-        Tuple<int,float, int>[] GetPolygonPixels(Vector3[] pts)
+        void FillPolygon(Vector3[] pts, DirectBitmap b, float[] depthBuffer)
         {
             List<Tuple<int, float, int>> points = new List<Tuple<int, float, int>>();
             int maxZ = int.MinValue;
             int minZ = int.MaxValue;
-            int rounded, rounded2;
+            int rounded, rounded2, min;
             float slope;
             foreach (Vector3 pt in pts)
             {
@@ -326,10 +327,20 @@ namespace Graphics3D_v2
             for(int i = 0; i < pts.Length - 1; i++)
             {
                 slope = (pts[i + 1].z - pts[i].z) / (pts[i+1].x - pts[i].x);
-                if()
+                rounded = (int)Math.Round(pts[i].x);
+                rounded2 = (int)Math.Round(pts[i + 1].x);
+                if(rounded == rounded2) //Vertical line
+                {
+                    int lineLength = Math.Abs((int)Math.Round(pts[i].z) - (int)Math.Round(pts[i + 1].z));
+                    min = (int)Math.Min(Math.Round(pts[i].z), Math.Round(pts[i + 1].z));
+                    for(int j = 0; j < lineLength; j++)
+                    {
+                        if(xMinMax[j + min])
+                    }
+                }
             }
             slope = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length].x - pts[0].x);
-            return null;
+            
         }
 
         Tuple<int, int>[] GetLinePixels(Vector3 from, Vector3 to)
