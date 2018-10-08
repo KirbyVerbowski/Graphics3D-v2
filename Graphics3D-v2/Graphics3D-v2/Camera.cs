@@ -13,7 +13,7 @@ namespace Graphics3D_v2
         public List<Object3D> renderQueue = new List<Object3D>();
         public int renderWidth = 512;
         public int renderHeight = 256;
-        private RenderMode renderMode = RenderMode.Wireframe;
+        private RenderMode renderMode = RenderMode.Solid;
         public bool orthographic = true;
         float projectionDistance = 1;
         float horizFOV = 0.8552f; //approx. 49 degrees
@@ -165,6 +165,7 @@ namespace Graphics3D_v2
             Vector3 normToScreen = new Vector3(renderWidth / 2, 1, renderHeight / 2);
             float screenNormCoeffX = 1 / (projectionDistance * (float)Math.Tan(horizFOV));
             float screenNormCoeffZ = 1 / (projectionDistance * (float)Math.Tan(vertFOV));
+            float[] depthBuffer = new float[renderWidth * renderHeight];
 
             if(renderMode == RenderMode.Wireframe)
             {
@@ -218,6 +219,14 @@ namespace Graphics3D_v2
                     mesh = obj.TransformedMesh;
                     for(int face = 0; face < mesh.faces.GetLength(0); face++)
                     {
+
+                        float dot = Vector3.Dot(mesh.faceNormals[face], transform.Forward);
+                        if(dot < 0) //Back face culling
+                        {
+                            continue;
+                        }
+                        Color faceColor = Color.FromArgb((int)(255 * dot), (int)(255 * dot), (int)(255 * dot));
+
                         vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 0]] - camPos);
                         vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 1]] - camPos);
                         vert3 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 2]] - camPos);
@@ -243,28 +252,84 @@ namespace Graphics3D_v2
                         beforeClip1 = e1;
                         beforeClip2 = e2;
                         beforeClip3 = e3;
-                        if (NearFarClip(ref e1, ref e2)) //Gonna have to do something new here to clip the triangle 
+                        List<Vector3> drawPoints = new List<Vector3>(); //Will be a poygon with up to 6 sides
+                        if(NearFarClip(ref e1, ref e2))
                         {
-                            if (edgeClip(ref e1, ref e2))
+                            if(edgeClip(ref e1, ref e2))
                             {
-                                e1 *= normToScreen; // x in [-width/2, width/2] z in [-height/2, height/2]
-                                e2 *= normToScreen;
-
-                                e1 = new Vector3(renderWidth / 2f + e1.x, e1.y, renderHeight - (renderHeight / 2f + e1.z)); //x in [0,width] z in [0,height]
-                                e2 = new Vector3(renderWidth / 2f + e2.x, e2.y, renderHeight - (renderHeight / 2f + e2.z));
-                                foreach (Tuple<int, int> pt in GetLinePixels(e1, e2))
-                                {
-                                    b.SetPixel(pt.Item1, pt.Item2, Color.Black);
-
-                                }
-
+                                drawPoints.Add(e1);
+                                drawPoints.Add(e2);
                             }
                         }
+                        e1 = beforeClip1;
+                        e2 = beforeClip2;
+                        if (NearFarClip(ref e2, ref e3))
+                        {
+                            if (edgeClip(ref e2, ref e3))
+                            {
+                                drawPoints.Add(e2);
+                                drawPoints.Add(e3);
+                            }
+                        }
+                        e2 = beforeClip2;
+                        e3 = beforeClip3;
+                        if (NearFarClip(ref e1, ref e3))
+                        {
+                            if (edgeClip(ref e1, ref e3))
+                            {
+                                drawPoints.Add(e3);
+                                drawPoints.Add(e1);
+                            }
+                        }
+
+                        for(int i = 0; i < drawPoints.Count; i++)
+                        {
+                            drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
+                        }
+
+                        foreach (Tuple<int, float, int> pt in GetPolygonPixels(drawPoints.ToArray()))
+                        {
+                            if(depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] == 0 || depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] > pt.Item2)
+                            {
+                                b.SetPixel(pt.Item1, pt.Item3, faceColor);
+                            }                            
+                        }
+
+                       
                     }
                 }
             }
 
             return true;
+        }
+        
+
+        //----> +x
+    //   |
+    //   \/
+    //   +z
+        Tuple<int,float, int>[] GetPolygonPixels(Vector3[] pts)
+        {
+            List<Tuple<int, float, int>> points = new List<Tuple<int, float, int>>();
+            int maxZ = int.MinValue;
+            int minZ = int.MaxValue;
+            int rounded, rounded2;
+            float slope;
+            foreach (Vector3 pt in pts)
+            {
+                if ((rounded = (int)Math.Round(pt.z)) > maxZ)
+                    maxZ = rounded;
+                if (rounded < minZ)
+                    minZ = rounded;
+            }
+            int?[] xMinMax = new int?[maxZ - minZ]; 
+            for(int i = 0; i < pts.Length - 1; i++)
+            {
+                slope = (pts[i + 1].z - pts[i].z) / (pts[i+1].x - pts[i].x);
+                if()
+            }
+            slope = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length].x - pts[0].x);
+            return null;
         }
 
         Tuple<int, int>[] GetLinePixels(Vector3 from, Vector3 to)
