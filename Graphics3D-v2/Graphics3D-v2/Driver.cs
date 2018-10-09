@@ -67,7 +67,7 @@ namespace Graphics3D_v2
         {
             Camera camera = new Camera(new Transform(), 512, 256, 0.8552f);
 
-            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 10f, 0)), new Mesh(@"..\..\Cube.obj")));
+            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 5f, 0)), new Mesh(@"..\..\Medic_Box.obj")));
             AppForm app = new AppForm(camera);
             Application.Run(app);
            
@@ -102,8 +102,8 @@ namespace Graphics3D_v2
 
         private void StartRender()
         {
-            camera.renderQueue[0].transform.Location = new Vector3(2.5f * (float)Math.Sin(angle), 10, 2.5f * (float)Math.Cos(angle));
-            camera.renderQueue[0].transform.Rotate(new Vector3((float)Math.Cos(angle), (float)Math.Sin(angle), (float)Math.Sin(angle)), 0.05f);
+            camera.renderQueue[0].transform.Location = new Vector3(0, 10, 2.5f * (float)Math.Cos(angle));
+            camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.01f);
             angle += 0.05f;
             if (!rendering) Invalidate();
         }
