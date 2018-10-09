@@ -67,7 +67,7 @@ namespace Graphics3D_v2
         {
             Camera camera = new Camera(new Transform(), 512, 256, 0.8552f);
 
-            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 10f, 0)), new Mesh(@"..\..\Resources\Cube.obj")));
+            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 10f, 0)), new Mesh(@"Cube.obj")));
             AppForm app = new AppForm(camera);
             Application.Run(app);
            
