@@ -22,7 +22,7 @@ namespace Graphics3D_v2
         float nearClip = 0.1f;
         float farClip = 100;
 
-        public Camera(Transform transform, int width, int height, float horizFOV) : base(transform, new Mesh(@"Camera.obj"))
+        public Camera(Transform transform, int width, int height, float horizFOV) : base(transform, new Mesh(@"..\..\Camera.obj"))
         {
             renderHeight = height;
             renderWidth = width;
