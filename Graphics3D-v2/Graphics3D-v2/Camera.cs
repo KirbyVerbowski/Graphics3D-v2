@@ -220,12 +220,12 @@ namespace Graphics3D_v2
                     for(int face = 0; face < mesh.faces.GetLength(0); face++)
                     {
 
-                        float dot = Vector3.Dot(mesh.faceNormals[face], transform.Forward);
+                        float dot = Vector3.Dot(mesh.faceNormals[face], -transform.Forward);
                         if(dot < 0) //Back face culling
                         {
                             continue;
                         }
-                        Color faceColor = Color.FromArgb((int)(255 * dot), (int)(255 * dot), (int)(255 * dot));
+                        Color faceColor = Color.FromArgb((int)(255 * dot), 0, 0);
 
                         vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 0]] - camPos);
                         vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 1]] - camPos);
@@ -287,14 +287,8 @@ namespace Graphics3D_v2
                             drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
                         }
 
-                        FillPolygon(drawPoints.ToArray(), b, depthBuffer);
-                        foreach (Tuple<int, float, int> pt in GetPolygonPixels(drawPoints.ToArray()))
-                        {
-                            if(depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] == 0 || depthBuffer[pt.Item3 + (renderWidth * pt.Item1)] > pt.Item2)
-                            {
-                                b.SetPixel(pt.Item1, pt.Item3, faceColor);
-                            }                            
-                        }
+                        FillPolygon(drawPoints.ToArray(), b, depthBuffer, faceColor);
+                        
 
                        
                     }
@@ -309,13 +303,15 @@ namespace Graphics3D_v2
     //   |
     //   \/
     //   +z
-        void FillPolygon(Vector3[] pts, DirectBitmap b, float[] depthBuffer)
+        void FillPolygon(Vector3[] pts, DirectBitmap b, float[] depthBuffer, Color color)
         {
             List<Tuple<int, float, int>> points = new List<Tuple<int, float, int>>();
             int maxZ = int.MinValue;
             int minZ = int.MaxValue;
-            int rounded, rounded2, min;
-            float slope;
+            int rounded, rounded2, max;
+            Tuple<int, float, int> temp;
+            int x1, z1, x2, z2;
+            float slopeXZ, slopeYZ;
             foreach (Vector3 pt in pts)
             {
                 if ((rounded = (int)Math.Round(pt.z)) > maxZ)
@@ -324,23 +320,161 @@ namespace Graphics3D_v2
                     minZ = rounded;
             }
             int?[] xMinMax = new int?[maxZ - minZ]; 
-            for(int i = 0; i < pts.Length - 1; i++)
+            for(int i = 0; i < pts.Length - 1; i++) //For each edge (except for the one that connects the last to the first vertex
             {
-                slope = (pts[i + 1].z - pts[i].z) / (pts[i+1].x - pts[i].x);
-                rounded = (int)Math.Round(pts[i].x);
-                rounded2 = (int)Math.Round(pts[i + 1].x);
-                if(rounded == rounded2) //Vertical line
+                slopeXZ = (pts[i + 1].z - pts[i].z) / (pts[i+1].x - pts[i].x);
+                slopeYZ = (pts[i + 1].z - pts[i].z) / (pts[i + 1].y - pts[i].y);
+                x1 = (int)Math.Round(pts[i].x); z1 = (int)Math.Round(pts[i].z);
+                x2 = (int)Math.Round(pts[i + 1].x); z2 = (int)Math.Round(pts[i + 1].z);
+
+                if (x1 == x2) //Vertical line
                 {
-                    int lineLength = Math.Abs((int)Math.Round(pts[i].z) - (int)Math.Round(pts[i + 1].z));
-                    min = (int)Math.Min(Math.Round(pts[i].z), Math.Round(pts[i + 1].z));
-                    for(int j = 0; j < lineLength; j++)
+                    max = Math.Max(z1, z2);
+                    for(int j = Math.Min(z1, z2); j < max; j++)
                     {
-                        if(xMinMax[j + min])
+                        if (xMinMax[j - minZ] == null)
+                        {
+                            xMinMax[j - minZ] = x1;
+                        }
+                        else
+                        {
+                            if(xMinMax[j - minZ] > x1)
+                            {
+                                for(int k = x1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
+                                {
+                                    //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
+                                    //{
+                                        b.SetPixel(k, j, color);
+                                    //}
+                                }
+                            }else
+                            {
+                                for(int k = (int)xMinMax[j-minZ]; k < x1; k++)
+                                {
+                                    b.SetPixel(k, j, color);    //do z-buffering here
+                                }
+                            }
+                        }
+                    }
+                }
+                else if(z1 != z2)   //Diagonal line
+                {
+                    max = Math.Max(z1, z2);
+                    for (int j = Math.Min(z1, z2); j < max; j++)
+                    {
+                        temp = new Tuple<int, float, int>((int)Math.Round(((j - pts[i].z) / slopeXZ) + pts[i].x), ((j - pts[i].z) / slopeYZ) + pts[i].y, j);
+                        if (xMinMax[j - minZ] == null)
+                        {
+                            xMinMax[j - minZ] = temp.Item1;
+                        }
+                        else
+                        {
+                            if (xMinMax[j - minZ] > temp.Item1)
+                            {
+                                for (int k = temp.Item1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
+                                {
+                                    //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
+                                    //{
+                                    b.SetPixel(k, j, color);
+                                    //}
+                                }
+                            }
+                            else
+                            {
+                                for (int k = (int)xMinMax[j - minZ]; k < temp.Item1; k++)
+                                {
+                                    b.SetPixel(k, j, color);    //Do z-buffering here
+                                }
+                            }
+                        }
+                    }
+                }
+                else //Horizontal line
+                {
+                    max = Math.Max(x1, x2);
+                    for (int j = Math.Min(x1, x2); j < max; j++)
+                    {
+                        b.SetPixel(j, z1, color);   //Do z-buffering here
                     }
                 }
             }
-            slope = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length].x - pts[0].x);
-            
+            slopeXZ = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length-1].x - pts[0].x);
+            slopeYZ = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length-1].y - pts[0].y);
+            x1 = (int)Math.Round(pts[pts.Length-1].x); z1 = (int)Math.Round(pts[pts.Length-1].z);
+            x2 = (int)Math.Round(pts[0].x); z2 = (int)Math.Round(pts[0].z);
+
+            if (x1 == x2) //Vertical line
+            {
+                max = Math.Max(z1, z2);
+                for (int j = Math.Min(z1, z2); j < max; j++)
+                {
+                    if (xMinMax[j - minZ] == null)
+                    {
+                        xMinMax[j - minZ] = x1;
+                    }
+                    else
+                    {
+                        if (xMinMax[j - minZ] > x1)
+                        {
+                            for (int k = x1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
+                            {
+                                //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
+                                //{
+                                b.SetPixel(k, j, color);
+                                //}
+                            }
+                        }
+                        else
+                        {
+                            for (int k = (int)xMinMax[j - minZ]; k < x1; k++)
+                            {
+                                b.SetPixel(k, j, color);    //do z-buffering here
+                            }
+                        }
+                    }
+                }
+            }
+            else if (z1 != z2)   //Diagonal line
+            {
+                max = Math.Max(z1, z2);
+                for (int j = Math.Min(z1, z2); j < max; j++)
+                {
+                    temp = new Tuple<int, float, int>((int)Math.Round(((j - pts[pts.Length-1].z) / slopeXZ) + pts[pts.Length-1].x), ((j - pts[pts.Length-1].z) / slopeYZ) + pts[pts.Length-1].y, j);
+                    if (xMinMax[j - minZ] == null)
+                    {
+                        xMinMax[j - minZ] = temp.Item1;
+                    }
+                    else
+                    {
+                        if (xMinMax[j - minZ] > temp.Item1)
+                        {
+                            for (int k = temp.Item1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
+                            {
+                                //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
+                                //{
+                                b.SetPixel(k, j, color);
+                                //}
+                            }
+                        }
+                        else
+                        {
+                            for (int k = (int)xMinMax[j - minZ]; k < temp.Item1; k++)
+                            {
+                                b.SetPixel(k, j, color);    //Do z-buffering here
+                            }
+                        }
+                    }
+                }
+            }
+            else //Horizontal line
+            {
+                max = Math.Max(x1, x2);
+                for (int j = Math.Min(x1, x2); j < max; j++)
+                {
+                    b.SetPixel(j, z1, color);   //Do z-buffering here
+                }
+            }
+
         }
 
         Tuple<int, int>[] GetLinePixels(Vector3 from, Vector3 to)
