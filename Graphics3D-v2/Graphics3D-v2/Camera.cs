@@ -8,6 +8,78 @@ namespace Graphics3D_v2
     class Camera : Object3D
     {
 
+        private class Triangle
+        {
+            public Vector3 v0, v1, v2;
+            public Vector3[] Points {
+                get {
+                    return new Vector3[] { v0, v1, v2 };
+                }
+            }
+            public Triangle(Vector3 v0, Vector3 v1, Vector3 v2)
+            {
+                this.v0 = v0; this.v1 = v1; this.v2 = v2;
+            }
+
+            
+        }
+
+        public class Triangle2
+        {
+            public Vector2 v0, v1, v2;
+            public float z0, z1, z2;
+            public Vector2[] Points {
+                get { return new Vector2[] { v0, v1, v2 }; }
+            }
+            public Triangle2(Vector2 v0, Vector2 v1, Vector2 v2, float z0, float z1, float z2)
+            {
+                this.v0 = v0; this.v1 = v1; this.v2 = v2;
+                this.z0 = z0; this.z1 = z1; this.z2 = z2;
+            }
+
+            private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c, out bool result)
+            {
+                float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+                result = fresult >= 0;
+                return fresult;
+            }
+            private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c)
+            {
+                return -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+            }
+
+            public bool InsideTriangle(Vector2 point)
+            {
+                EdgeFunction(v0, v1, point, out bool result1);
+                EdgeFunction(v1, v2, point, out bool result2);
+                EdgeFunction(v2, v0, point, out bool result3);
+                return result1 && result2 && result3;
+            }
+
+            public Vector3 GetBarycentricCoordinates(Vector2 point)
+            {
+                float area = EdgeFunction(v0, v1, v2);
+                float w0 = EdgeFunction(v1, v2, point); 
+                float w1 = EdgeFunction(v2, v0, point); 
+                float w2 = EdgeFunction(v0, v1, point);
+                return new Vector3(w0 / area, w1 / area, w2 / area);
+            }
+            public Vector3 GetBarycentricCoordinates(Vector2 point, out bool inTri)
+            {
+                float area = EdgeFunction(v0, v1, v2);
+                float w0 = EdgeFunction(v1, v2, point, out bool res1);
+                float w1 = EdgeFunction(v2, v0, point, out bool res2);
+                float w2 = EdgeFunction(v0, v1, point, out bool res3);
+                inTri = res1 && res2 && res3;
+                return new Vector3(w0 / area, w1 / area, w2 / area);
+            }
+
+            public float ZAt(Vector3 baryCentricCoords)
+            {
+                return z0 * baryCentricCoords.x + z1 * baryCentricCoords.y + z2 * baryCentricCoords.z;
+            }
+        }
+
         enum RenderMode { Wireframe, Solid }
 
         public List<Object3D> renderQueue = new List<Object3D>();
@@ -221,6 +293,7 @@ namespace Graphics3D_v2
                     {
 
                         float dot = Vector3.Dot(mesh.faceNormals[face], -transform.Forward);
+                        
                         if(dot < 0) //Back face culling
                         {
                             continue;
@@ -287,17 +360,24 @@ namespace Graphics3D_v2
                             drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
                         }
 
-                        FillPolygon(drawPoints.ToArray(), b, depthBuffer, faceColor);
+                        Triangle2[] tris = Triangulate(drawPoints.ToArray());
+                        foreach(Triangle2 tri in tris)
+                        {
+                            DrawTriangle(tri, b, depthBuffer, faceColor);
+                        }
+
+                        //FillPolygon(drawPoints.ToArray(), b, depthBuffer, faceColor); Uncomment this to have a working (shitty) render
                         
 
                        
                     }
                 }
             }
-
+            Console.WriteLine("Done render");
             return true;
         }
         
+ 
 
         //----> +x
     //   |
@@ -477,6 +557,18 @@ namespace Graphics3D_v2
 
         }
 
+        //Takes a convex, counterclockwise winding n-gon and returns n - 2 list of triangles (fan method)
+        private Triangle2[] Triangulate(Vector3[] polygon)
+        {
+            Triangle2[] triangles = new Triangle2[polygon.Length - 2];
+            int tri = 0;
+            for(int i = 1; i < polygon.Length - 1; i++)
+            {
+                triangles[tri++] = new Triangle2(polygon[0], polygon[i], polygon[i + 1], polygon[0].y, polygon[i].y, polygon[i+1].y);
+            }
+            return triangles;
+        }
+
         Tuple<int, int>[] GetLinePixels(Vector3 from, Vector3 to)
         {
             List<Tuple<int, int>> points = new List<Tuple<int, int>>();
@@ -505,7 +597,45 @@ namespace Graphics3D_v2
             return points.ToArray();
         }
 
-        
+
+        public void DrawTriangle(Triangle2 tri, DirectBitmap b, float[] depthBuffer, Color color)
+        {
+            int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+            foreach(Vector2 v in tri.Points) //Get bounding box
+            {
+                if (v.x > maxX)
+                    maxX = (int)(v.x + 1);//Round up
+                if (v.x < minX)
+                    minX = (int)v.x;
+                if (v.y > maxY)
+                    maxY = (int)(v.y + 1);
+                if (v.y < minY)
+                    minY = (int)v.y;
+            }
+            Vector2 pt = new Vector2();
+            float z;
+            for(int i = minX; i <= maxX; i++)
+            {
+                for(int j = minY; j <= maxY; j++)
+                {
+                    pt.x = i + 0.5f;
+                    pt.y = j + 0.5f;
+                    Vector3 baryCoords = tri.GetBarycentricCoordinates(pt, out bool inside);
+                    //Console.WriteLine(baryCoords);
+                    if (inside)
+                    {
+                        
+                        //Do some interpolation with the z-buffer here
+                        z = tri.ZAt(baryCoords);
+                        if(z >= depthBuffer[(i) + (renderHeight * (renderHeight - j))]) //Might wanna flip this
+                        {
+                            b.SetPixel(i, renderHeight - j, color);
+                            depthBuffer[(i + minX) + (renderHeight * (j + minY))] = z;
+                        }                        
+                    }
+                }
+            }
+        }
     
     }
 }

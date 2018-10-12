@@ -19,9 +19,161 @@ namespace Graphics3D_v2
         }
     }
 
-    public struct Vector3
+    public struct Vector2
     {
 
+        public float x;
+        public float y;
+
+        public float Magnitude {
+            get {
+                return (float)Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2));
+            }
+            private set { }
+        }
+        public Vector2 Normalized {
+            get {
+                return this * (1 / Magnitude);
+            }
+        }
+
+        public static Vector2 UnitVectorX {
+            get {
+                return new Vector2(1, 0);
+            }
+        }
+        public static Vector2 UnitVectorY {
+            get {
+                return new Vector2(0, 1);
+            }
+        }
+        public static Vector2 Zero {
+            get {
+                return new Vector2(0, 0);
+            }
+        }
+        public static Vector2 One {
+            get { return new Vector2(1, 1); }
+        }
+
+        public Vector2(float x, float y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+
+
+        public void Normalize()
+        {
+            this = this * (1 / this.Magnitude);
+        }
+
+        public override string ToString() => ("(" + x + ", " + y + ")");
+        public override bool Equals(object obj) => (Vector2)obj == this;
+        public override int GetHashCode() => this.x.GetHashCode() ^ this.y.GetHashCode();
+
+
+        public static float Dot(Vector2 v1, Vector2 v2)
+        {
+            return v1.x * v2.x + v1.y * v2.y;
+        }
+        public static float Cross(Vector2 v1, Vector2 v2)
+        {
+            return v1.x * v2.y - v1.y * v2.x;
+        }
+        public static float Angle(Vector2 v1, Vector2 v2)
+        {
+            float f = (float)(Math.Acos(Dot(v1, v2) / (v1.Magnitude * v2.Magnitude)));
+            if (!float.IsNaN(f))
+            {
+                return f;
+            }
+            else
+            {
+                return 0;
+            }
+
+        }
+
+        public static bool operator ==(Vector2 v1, Vector2 v2)
+        {
+            return (Math.Abs(v1.x - v2.x) < MathConst.EPSILON && Math.Abs(v1.y - v2.y) < MathConst.EPSILON);
+        }
+        public static bool operator !=(Vector2 v1, Vector2 v2)
+        {
+            return (Math.Abs(v1.x - v2.x) >= MathConst.EPSILON || Math.Abs(v1.y - v2.y) >= MathConst.EPSILON);
+        }
+        public static Vector2 operator +(Vector2 v1, Vector2 v2)
+        {
+            return new Vector2(v1.x + v2.x, v1.y + v2.y);
+        }
+        public static Vector2 operator -(Vector2 v1, Vector2 v2)
+        {
+            return new Vector2 (v1.x - v2.x, v1.y - v2.y);
+        }
+        public static Vector2 operator *(Vector2 v1, float mag)
+        {
+            return new Vector2 (v1.x * mag, v1.y * mag);
+        }
+        public static Vector2 operator *(float mag, Vector2 v1)
+        {
+            return new Vector2 (v1.x * mag, v1.y * mag);
+        }
+        /// <summary>
+        /// Component-wise vector multiplication
+        /// </summary>
+        public static Vector2 operator *(Vector2 v1, Vector2 v2)
+        {
+            return new Vector2(v1.x * v2.x, v1.y * v2.y);
+        }
+        public static Vector2 operator -(Vector2 v1)
+        {
+            return v1 * (-1);
+        }
+
+        /// <summary>
+        /// Get component by index (0 = x, 1 = y, 2 = z)
+        /// </summary>
+        public float this[int i] {
+            get {
+                switch (i)
+                {
+                    case 0:
+                        return this.x;
+                    case 1:
+                        return this.y;
+                    default:
+                        throw new IndexOutOfRangeException();
+                }
+            }
+            set {
+                switch (i)
+                {
+                    case 0:
+                        this.x = value;
+                        break;
+                    case 1:
+                        this.y = value;
+                        break;
+                    default:
+                        throw new IndexOutOfRangeException();
+                }
+            }
+
+        }
+
+        public static implicit operator Vector3(Vector2 v)
+        {
+            return new Vector3(v.x, v.y, 0);
+        }
+        public static implicit operator Vector2(Vector3 v)
+        {
+            return new Vector2(v.x, v.z);   ///!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        }
+    }
+
+    public struct Vector3
+    {
         public float x;
         public float y;
         public float z;
@@ -127,7 +279,7 @@ namespace Graphics3D_v2
 
         public static bool operator ==(Vector3 v1, Vector3 v2)
         {
-            return (Math.Abs(v1.x - v2.x) < MathConst.EPSILON && Math.Abs(v1.y - v2.y) < MathConst.EPSILON && Math.Abs(v1.z - v2.z) < MathConst.EPSILON );
+            return (Math.Abs(v1.x - v2.x) < MathConst.EPSILON && Math.Abs(v1.y - v2.y) < MathConst.EPSILON && Math.Abs(v1.z - v2.z) < MathConst.EPSILON);
         }
         public static bool operator !=(Vector3 v1, Vector3 v2)
         {

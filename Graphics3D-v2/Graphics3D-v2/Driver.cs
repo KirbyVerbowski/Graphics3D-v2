@@ -66,11 +66,12 @@ namespace Graphics3D_v2
         static void Main(string[] args)
         {
             Camera camera = new Camera(new Transform(), 512, 256, 0.8552f);
-
-            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 5f, 0)), new Mesh(@"..\..\Medic_Box.obj")));
             AppForm app = new AppForm(camera);
+            
+            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 5f, 0)), new Mesh(@"..\..\Cube.obj")));
+            
             Application.Run(app);
-           
+            
         }
     }
 
@@ -82,7 +83,7 @@ namespace Graphics3D_v2
         public System.Windows.Forms.Timer renderTimer;
         private bool rendering = false;
         float angle = 0;
-        DirectBitmap image;
+        public DirectBitmap image;
 
         public AppForm(Camera c)
         {
@@ -102,8 +103,9 @@ namespace Graphics3D_v2
 
         private void StartRender()
         {
-            camera.renderQueue[0].transform.Location = new Vector3(0, 10, 2.5f * (float)Math.Cos(angle));
-            camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.01f);
+
+            //camera.renderQueue[0].transform.Location = new Vector3(0, 10, 0);
+            camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.05f);
             angle += 0.05f;
             if (!rendering) Invalidate();
         }
@@ -114,6 +116,8 @@ namespace Graphics3D_v2
             rendering = true;
             image.Clear();
             camera.Render(image);
+            Camera.Triangle2 t = new Camera.Triangle2(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
+            //camera.DrawTriangle(t, image, new float[5], Color.Red);
             e.Graphics.DrawImage(image.Bitmap, new Point(0, 0));
 
             rendering = false;
