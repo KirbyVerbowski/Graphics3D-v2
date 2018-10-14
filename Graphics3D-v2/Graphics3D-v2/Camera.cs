@@ -78,6 +78,11 @@ namespace Graphics3D_v2
             {
                 return z0 * baryCentricCoords.x + z1 * baryCentricCoords.y + z2 * baryCentricCoords.z;
             }
+
+            public override string ToString()
+            {
+                return "(" + v0 + v1 + v2 + ")";
+            }
         }
 
         enum RenderMode { Wireframe, Solid }
@@ -91,7 +96,7 @@ namespace Graphics3D_v2
         float horizFOV = 0.8552f; //approx. 49 degrees
         float vertFOV;
         float aspectRatio;
-        float nearClip = 0.1f;
+        float nearClip = 1f;
         float farClip = 100;
 
         public Camera(Transform transform, int width, int height, float horizFOV) : base(transform, new Mesh(@"..\..\Camera.obj"))
@@ -104,9 +109,10 @@ namespace Graphics3D_v2
         }
 
 
-        //True return value means the vectors were changed
-        private bool edgeClip(ref Vector3 e1, ref Vector3 e2)
+        //False if both off screen
+        private bool EdgeClip(ref Vector3 e1, ref Vector3 e2, out bool moved1, out bool moved2)
         {
+            moved1 = false; moved2 = false;
             if ((e1.x < -1 && e2.x < -1) ||
                             (e1.x > 1 && e2.x > 1)) //Both Points off the screen to left or right
             {
@@ -115,18 +121,19 @@ namespace Graphics3D_v2
 
             float slope = (e1.z - e2.z) / (e1.x - e2.x);
 
-
             if ((e1.x > 1 && e2.x < 1) || (e1.x < 1 && e2.x > 1))  //Edge pases through x = 1
             {
                 if (e1.x < 1) //e1 on the screen
                 {
                     e2.x = 1;
                     e2.z = slope * (1 - e1.x) + e1.z;
+                    moved2 = true;
                 }
                 else
                 {
                     e1.x = 1;
                     e1.z = slope * (1 - e2.x) + e2.z;
+                    moved1 = true;
                 }
             }
             if ((e1.x < -1 && e2.x > -1) || (e1.x > -1 && e2.x < -1))  //Edge pases through x = -1
@@ -135,11 +142,13 @@ namespace Graphics3D_v2
                 {
                     e2.x = -1;
                     e2.z = slope * (-1 - e1.x) + e1.z;
+                    moved2 = true;
                 }
                 else
                 {
                     e1.x = -1;
                     e1.z = slope * (-1 - e2.x) + e2.z;
+                    moved1 = true;
                 }
             }
 
@@ -155,11 +164,13 @@ namespace Graphics3D_v2
                 {
                     e2.z = 1;
                     e2.x = (1 - e1.z) / slope + e1.x;
+                    moved2 = true;
                 }
                 else
                 {
                     e1.z = 1;
                     e1.x = (1 - e2.z) / slope + e2.x;
+                    moved1 = true;
                 }
             }
             if ((e1.z > -1 && e2.z < -1) || (e1.z < -1 && e2.z > -1))  //Edge passes through z = -1
@@ -168,26 +179,28 @@ namespace Graphics3D_v2
                 {
                     e2.z = -1;
                     e2.x = (-1 - e1.z) / slope + e1.x;
+                    moved2 = true;
                 }
                 else
                 {
                     e1.z = -1;
                     e1.x = (-1 - e2.z) / slope + e2.x;
+                    moved1 = true;
                 }
             }
 
             return true;
         }
 
-        //True return indicates one of the vectors was moved
-        private bool NearFarClip(ref Vector3 e1, ref Vector3 e2)
+        //False if both off screen
+        private bool NearFarClip(ref Vector3 e1, ref Vector3 e2, out bool moved1, out bool moved2)
         {
+            moved1 = false; moved2 = false;
             if((e1.y > farClip && e2.y > farClip) ||
                  e1.y < nearClip && e2.y < nearClip) //Both either too close or too far
             {
                 return false;
             }
-
             float slopeXY = (e1.x - e2.x) / (e1.y - e2.y);
             float slopeZY = (e1.z - e2.z) / (e1.y - e2.y);
 
@@ -198,12 +211,14 @@ namespace Graphics3D_v2
                     e1.x = (farClip - e2.y) / slopeXY + e2.x;
                     e1.y = farClip;
                     e1.z = (farClip - e2.y) / slopeZY + e2.z;
+                    moved1 = true;
                 }
                 else
                 {
                     e2.x = (farClip - e1.y) / slopeXY + e1.x;
                     e2.y = farClip;
                     e2.z = (farClip - e1.y) / slopeZY + e1.z;
+                    moved2 = true;
                 }
             }
 
@@ -214,12 +229,14 @@ namespace Graphics3D_v2
                     e1.x = (nearClip - e2.y) / slopeXY + e2.x;
                     e1.y = nearClip;
                     e1.z = (nearClip - e2.y) / slopeZY + e2.z;
+                    moved1 = true;
                 }
                 else
                 {
                     e2.x = (nearClip - e1.y) / slopeXY + e1.x;
                     e2.y = nearClip;
                     e2.z = (nearClip - e1.y) / slopeZY + e1.z;
+                    moved2 = true;
                 }
             }
             return true;
@@ -263,9 +280,10 @@ namespace Graphics3D_v2
                         e2.z *= screenNormCoeffZ;
 
                         //Do Edge clipping
+                        /* Shit's fucked atm and idgaf about wireframe
                         if (NearFarClip(ref e1, ref e2))
                         {
-                            if (edgeClip(ref e1, ref e2))
+                            if (EdgeClip(ref e1, ref e2))
                             {
                                 e1 *= normToScreen; // x in [-width/2, width/2] z in [-height/2, height/2]
                                 e2 *= normToScreen;
@@ -280,6 +298,7 @@ namespace Graphics3D_v2
 
                             }
                         }
+                        */
                     }
                 }
                 
@@ -291,13 +310,13 @@ namespace Graphics3D_v2
                     mesh = obj.TransformedMesh;
                     for(int face = 0; face < mesh.faces.GetLength(0); face++)
                     {
-
                         float dot = Vector3.Dot(mesh.faceNormals[face], -transform.Forward);
-                        
-                        if(dot < 0) //Back face culling
+                        if(mesh.faceNormals[face].z == 0)
                         {
-                            continue;
+                            Console.WriteLine("dot:" + dot);
                         }
+                        if (dot < 0) //Back face culling
+                            continue;
                         Color faceColor = Color.FromArgb((int)(255 * dot), 0, 0);
 
                         vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 0]] - camPos);
@@ -326,45 +345,97 @@ namespace Graphics3D_v2
                         beforeClip2 = e2;
                         beforeClip3 = e3;
                         List<Vector3> drawPoints = new List<Vector3>(); //Will be a poygon with up to 6 sides
-                        if(NearFarClip(ref e1, ref e2))
+                        bool added1 = false, added2 = false, added3 = false;
+
+                        if(NearFarClip(ref e1, ref e2, out bool moved1nf, out bool moved2nf))
                         {
-                            if(edgeClip(ref e1, ref e2))
+                            if(EdgeClip(ref e1, ref e2, out bool moved1ec, out bool moved2ec))
                             {
-                                drawPoints.Add(e1);
-                                drawPoints.Add(e2);
+                                if(moved1ec || moved1nf)
+                                {
+                                    drawPoints.Add(e1);
+                                }
+                                else if(!added1)
+                                {
+                                    drawPoints.Add(e1); added1 = true;
+                                }
+                                if (moved2ec || moved2nf)
+                                {
+                                    drawPoints.Add(e1);
+                                }
+                                else if (!added2)
+                                {
+                                    drawPoints.Add(e2); added2 = true;
+                                }
                             }
                         }
-                        e1 = beforeClip1;
-                        e2 = beforeClip2;
-                        if (NearFarClip(ref e2, ref e3))
+                        e1 = beforeClip1; e2 = beforeClip2;
+                        if (NearFarClip(ref e2, ref e3, out moved2nf, out bool moved3nf))
                         {
-                            if (edgeClip(ref e2, ref e3))
+                            if (EdgeClip(ref e2, ref e3, out bool moved2ec, out bool moved3ec))
                             {
-                                drawPoints.Add(e2);
-                                drawPoints.Add(e3);
+                                if (moved2ec || moved2nf)
+                                {
+                                    drawPoints.Add(e2);
+                                }
+                                else if (!added2)
+                                {
+                                    drawPoints.Add(e2); added2 = true;
+                                }
+                                if (moved3ec || moved3nf)
+                                {
+                                    drawPoints.Add(e3);
+                                }
+                                else if (!added3)
+                                {
+                                    drawPoints.Add(e3); added3 = true;
+                                }
                             }
                         }
-                        e2 = beforeClip2;
-                        e3 = beforeClip3;
-                        if (NearFarClip(ref e1, ref e3))
+                        e2 = beforeClip2; e3 = beforeClip3;
+                        if (NearFarClip(ref e3, ref e1, out moved3nf, out moved1nf))
                         {
-                            if (edgeClip(ref e1, ref e3))
+                            if (EdgeClip(ref e3, ref e1, out bool moved3ec, out bool moved1ec))
                             {
-                                drawPoints.Add(e3);
-                                drawPoints.Add(e1);
+                                if (moved3ec || moved3nf)
+                                {
+                                    drawPoints.Add(e3);
+                                }
+                                else if (!added3)
+                                {
+                                    drawPoints.Add(e3); added3 = true;
+                                }
+                                if (moved1ec || moved1nf)
+                                {
+                                    drawPoints.Add(e1);
+                                }
+                                else if (!added1)
+                                {
+                                    drawPoints.Add(e1); added1 = true;
+                                }
                             }
                         }
 
-                        for(int i = 0; i < drawPoints.Count; i++)
+                        for (int i = 0; i < drawPoints.Count; i++)
                         {
                             drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
                         }
-
-                        Triangle2[] tris = Triangulate(drawPoints.ToArray());
-                        foreach(Triangle2 tri in tris)
+                        if(drawPoints.Count > 3)
                         {
+                            Console.WriteLine("something clipped");
+                            Triangle2[] tris = Triangulate(drawPoints.ToArray());
+                            foreach (Triangle2 tri in tris)
+                            {
+                                DrawTriangle(tri, b, depthBuffer, faceColor);
+                            }
+                        }
+                        else
+                        {
+                            Triangle2 tri = new Triangle2(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
+                            Console.WriteLine(tri);
                             DrawTriangle(tri, b, depthBuffer, faceColor);
                         }
+                        
 
                         //FillPolygon(drawPoints.ToArray(), b, depthBuffer, faceColor); Uncomment this to have a working (shitty) render
                         
@@ -376,186 +447,7 @@ namespace Graphics3D_v2
             Console.WriteLine("Done render");
             return true;
         }
-        
- 
-
-        //----> +x
-    //   |
-    //   \/
-    //   +z
-        void FillPolygon(Vector3[] pts, DirectBitmap b, float[] depthBuffer, Color color)
-        {
-            List<Tuple<int, float, int>> points = new List<Tuple<int, float, int>>();
-            int maxZ = int.MinValue;
-            int minZ = int.MaxValue;
-            int rounded, rounded2, max;
-            Tuple<int, float, int> temp;
-            int x1, z1, x2, z2;
-            float slopeXZ, slopeYZ;
-            foreach (Vector3 pt in pts)
-            {
-                if ((rounded = (int)Math.Round(pt.z)) > maxZ)
-                    maxZ = rounded;
-                if (rounded < minZ)
-                    minZ = rounded;
-            }
-            int?[] xMinMax = new int?[maxZ - minZ]; 
-            for(int i = 0; i < pts.Length - 1; i++) //For each edge (except for the one that connects the last to the first vertex
-            {
-                slopeXZ = (pts[i + 1].z - pts[i].z) / (pts[i+1].x - pts[i].x);
-                slopeYZ = (pts[i + 1].z - pts[i].z) / (pts[i + 1].y - pts[i].y);
-                x1 = (int)Math.Round(pts[i].x); z1 = (int)Math.Round(pts[i].z);
-                x2 = (int)Math.Round(pts[i + 1].x); z2 = (int)Math.Round(pts[i + 1].z);
-
-                if (x1 == x2) //Vertical line
-                {
-                    max = Math.Max(z1, z2);
-                    for(int j = Math.Min(z1, z2); j < max; j++)
-                    {
-                        if (xMinMax[j - minZ] == null)
-                        {
-                            xMinMax[j - minZ] = x1;
-                        }
-                        else
-                        {
-                            if(xMinMax[j - minZ] > x1)
-                            {
-                                for(int k = x1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
-                                {
-                                    //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
-                                    //{
-                                        b.SetPixel(k, j, color);
-                                    //}
-                                }
-                            }else
-                            {
-                                for(int k = (int)xMinMax[j-minZ]; k < x1; k++)
-                                {
-                                    b.SetPixel(k, j, color);    //do z-buffering here
-                                }
-                            }
-                        }
-                    }
-                }
-                else if(z1 != z2)   //Diagonal line
-                {
-                    max = Math.Max(z1, z2);
-                    for (int j = Math.Min(z1, z2); j < max; j++)
-                    {
-                        temp = new Tuple<int, float, int>((int)Math.Round(((j - pts[i].z) / slopeXZ) + pts[i].x), ((j - pts[i].z) / slopeYZ) + pts[i].y, j);
-                        if (xMinMax[j - minZ] == null)
-                        {
-                            xMinMax[j - minZ] = temp.Item1;
-                        }
-                        else
-                        {
-                            if (xMinMax[j - minZ] > temp.Item1)
-                            {
-                                for (int k = temp.Item1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
-                                {
-                                    //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
-                                    //{
-                                    b.SetPixel(k, j, color);
-                                    //}
-                                }
-                            }
-                            else
-                            {
-                                for (int k = (int)xMinMax[j - minZ]; k < temp.Item1; k++)
-                                {
-                                    b.SetPixel(k, j, color);    //Do z-buffering here
-                                }
-                            }
-                        }
-                    }
-                }
-                else //Horizontal line
-                {
-                    max = Math.Max(x1, x2);
-                    for (int j = Math.Min(x1, x2); j < max; j++)
-                    {
-                        b.SetPixel(j, z1, color);   //Do z-buffering here
-                    }
-                }
-            }
-            slopeXZ = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length-1].x - pts[0].x);
-            slopeYZ = (pts[pts.Length-1].z - pts[0].z) / (pts[pts.Length-1].y - pts[0].y);
-            x1 = (int)Math.Round(pts[pts.Length-1].x); z1 = (int)Math.Round(pts[pts.Length-1].z);
-            x2 = (int)Math.Round(pts[0].x); z2 = (int)Math.Round(pts[0].z);
-
-            if (x1 == x2) //Vertical line
-            {
-                max = Math.Max(z1, z2);
-                for (int j = Math.Min(z1, z2); j < max; j++)
-                {
-                    if (xMinMax[j - minZ] == null)
-                    {
-                        xMinMax[j - minZ] = x1;
-                    }
-                    else
-                    {
-                        if (xMinMax[j - minZ] > x1)
-                        {
-                            for (int k = x1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
-                            {
-                                //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
-                                //{
-                                b.SetPixel(k, j, color);
-                                //}
-                            }
-                        }
-                        else
-                        {
-                            for (int k = (int)xMinMax[j - minZ]; k < x1; k++)
-                            {
-                                b.SetPixel(k, j, color);    //do z-buffering here
-                            }
-                        }
-                    }
-                }
-            }
-            else if (z1 != z2)   //Diagonal line
-            {
-                max = Math.Max(z1, z2);
-                for (int j = Math.Min(z1, z2); j < max; j++)
-                {
-                    temp = new Tuple<int, float, int>((int)Math.Round(((j - pts[pts.Length-1].z) / slopeXZ) + pts[pts.Length-1].x), ((j - pts[pts.Length-1].z) / slopeYZ) + pts[pts.Length-1].y, j);
-                    if (xMinMax[j - minZ] == null)
-                    {
-                        xMinMax[j - minZ] = temp.Item1;
-                    }
-                    else
-                    {
-                        if (xMinMax[j - minZ] > temp.Item1)
-                        {
-                            for (int k = temp.Item1; k < xMinMax[j - minZ]; k++) //Color the row of pixels
-                            {
-                                //if (depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] == 0 || depthBuffer[temp.Item3 + (renderWidth * temp.Item1)] > temp.Item2)
-                                //{
-                                b.SetPixel(k, j, color);
-                                //}
-                            }
-                        }
-                        else
-                        {
-                            for (int k = (int)xMinMax[j - minZ]; k < temp.Item1; k++)
-                            {
-                                b.SetPixel(k, j, color);    //Do z-buffering here
-                            }
-                        }
-                    }
-                }
-            }
-            else //Horizontal line
-            {
-                max = Math.Max(x1, x2);
-                for (int j = Math.Min(x1, x2); j < max; j++)
-                {
-                    b.SetPixel(j, z1, color);   //Do z-buffering here
-                }
-            }
-
-        }
+       
 
         //Takes a convex, counterclockwise winding n-gon and returns n - 2 list of triangles (fan method)
         private Triangle2[] Triangulate(Vector3[] polygon)
@@ -597,7 +489,6 @@ namespace Graphics3D_v2
             return points.ToArray();
         }
 
-
         public void DrawTriangle(Triangle2 tri, DirectBitmap b, float[] depthBuffer, Color color)
         {
             int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
@@ -624,12 +515,12 @@ namespace Graphics3D_v2
                     //Console.WriteLine(baryCoords);
                     if (inside)
                     {
-                        
+                        b.SetPixel(i, renderHeight - j, color);
                         //Do some interpolation with the z-buffer here
                         z = tri.ZAt(baryCoords);
                         if(z >= depthBuffer[(i) + (renderHeight * (renderHeight - j))]) //Might wanna flip this
                         {
-                            b.SetPixel(i, renderHeight - j, color);
+                            
                             depthBuffer[(i + minX) + (renderHeight * (j + minY))] = z;
                         }                        
                     }
