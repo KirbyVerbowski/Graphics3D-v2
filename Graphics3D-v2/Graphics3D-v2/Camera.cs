@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Threading;
 
 
 namespace Graphics3D_v2
@@ -8,36 +9,19 @@ namespace Graphics3D_v2
     class Camera : Object3D
     {
 
-        private class Triangle
-        {
-            public Vector3 v0, v1, v2;
-            public Vector3[] Points {
-                get {
-                    return new Vector3[] { v0, v1, v2 };
-                }
-            }
-            public Triangle(Vector3 v0, Vector3 v1, Vector3 v2)
-            {
-                this.v0 = v0; this.v1 = v1; this.v2 = v2;
-            }
-
-            
-        }
-
-        public class Triangle2
+        public class Triangle
         {
             public Vector2 v0, v1, v2;
             public float z0, z1, z2;
             public Vector2[] Points {
                 get { return new Vector2[] { v0, v1, v2 }; }
             }
-            public Triangle2(Vector2 v0, Vector2 v1, Vector2 v2, float z0, float z1, float z2)
+            public Triangle(Vector2 v0, Vector2 v1, Vector2 v2, float z0, float z1, float z2)
             {
                 this.v0 = v0; this.v1 = v1; this.v2 = v2;
                 this.z0 = z0; this.z1 = z1; this.z2 = z2;
             }
 
-            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
             private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c, out bool result)
             {
                 float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
@@ -419,15 +403,15 @@ namespace Graphics3D_v2
                         }
                         if(drawPoints.Count > 3)
                         {
-                            Triangle2[] tris = Triangulate(drawPoints.ToArray());
-                            foreach (Triangle2 tri in tris)
+                            Triangle[] tris = Triangulate(drawPoints.ToArray());
+                            foreach (Triangle tri in tris)
                             {
                                 DrawTriangle(tri, b, depthBuffer, faceColor);
                             }
                         }
                         else if(drawPoints.Count == 3)
                         {
-                            Triangle2 tri = new Triangle2(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
+                            Triangle tri = new Triangle(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
                             DrawTriangle(tri, b, depthBuffer, faceColor);
                         }
                        
@@ -439,13 +423,13 @@ namespace Graphics3D_v2
        
 
         //Takes a convex, counterclockwise winding n-gon and returns n - 2 list of triangles (fan method)
-        private Triangle2[] Triangulate(Vector3[] polygon)
+        private Triangle[] Triangulate(Vector3[] polygon)
         {
-            Triangle2[] triangles = new Triangle2[polygon.Length - 2];
+            Triangle[] triangles = new Triangle[polygon.Length - 2];
             int tri = 0;
             for(int i = 1; i < polygon.Length - 1; i++)
             {
-                triangles[tri++] = new Triangle2(polygon[0], polygon[i], polygon[i + 1], polygon[0].y, polygon[i].y, polygon[i+1].y);
+                triangles[tri++] = new Triangle(polygon[0], polygon[i], polygon[i + 1], polygon[0].y, polygon[i].y, polygon[i+1].y);
             }
             return triangles;
         }
@@ -478,7 +462,7 @@ namespace Graphics3D_v2
             return points.ToArray();
         }
 
-        public void DrawTriangle(Triangle2 tri, DirectBitmap b, float[] depthBuffer, Color color)
+        public void DrawTriangle(Triangle tri, DirectBitmap b, float[] depthBuffer, Color color)
         {
             float zBuf;
             int padding = 5;

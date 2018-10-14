@@ -70,8 +70,7 @@ namespace Graphics3D_v2
             
             camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 5, 0)), new Mesh(@"..\..\Suzanne.obj")));
             
-            Application.Run(app);
-            
+            Application.Run(app);            
         }
     }
 
@@ -117,7 +116,7 @@ namespace Graphics3D_v2
             rendering = true;
             image.Clear();
             camera.Render(image);
-            Camera.Triangle2 t = new Camera.Triangle2(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
+            Camera.Triangle t = new Camera.Triangle(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
             //camera.DrawTriangle(t, image, new float[5], Color.Red);
             e.Graphics.DrawImage(image.Bitmap, new Point(0, 0));
 
