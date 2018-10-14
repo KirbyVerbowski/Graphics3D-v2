@@ -311,10 +311,6 @@ namespace Graphics3D_v2
                     for(int face = 0; face < mesh.faces.GetLength(0); face++)
                     {
                         float dot = Vector3.Dot(mesh.faceNormals[face], -transform.Forward);
-                        if(mesh.faceNormals[face].z == 0)
-                        {
-                            Console.WriteLine("dot:" + dot);
-                        }
                         if (dot < 0) //Back face culling
                             continue;
                         Color faceColor = Color.FromArgb((int)(255 * dot), 0, 0);
@@ -418,21 +414,19 @@ namespace Graphics3D_v2
 
                         for (int i = 0; i < drawPoints.Count; i++)
                         {
-                            drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, renderHeight - (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
+                            drawPoints[i] = new Vector3(renderWidth / 2f + (drawPoints[i].x * normToScreen.x), drawPoints[i].y, (renderHeight / 2f + (drawPoints[i].z * normToScreen.z)));
                         }
                         if(drawPoints.Count > 3)
                         {
-                            Console.WriteLine("something clipped");
                             Triangle2[] tris = Triangulate(drawPoints.ToArray());
                             foreach (Triangle2 tri in tris)
                             {
                                 DrawTriangle(tri, b, depthBuffer, faceColor);
                             }
                         }
-                        else
+                        else if(drawPoints.Count == 3)
                         {
                             Triangle2 tri = new Triangle2(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
-                            Console.WriteLine(tri);
                             DrawTriangle(tri, b, depthBuffer, faceColor);
                         }
                         
@@ -505,22 +499,20 @@ namespace Graphics3D_v2
             }
             Vector2 pt = new Vector2();
             float z;
-            for(int i = minX; i <= maxX; i++)
+            for(int i = minX; i < maxX; i++)
             {
-                for(int j = minY; j <= maxY; j++)
+                for(int j = minY + 1; j <= maxY; j++)
                 {
                     pt.x = i + 0.5f;
                     pt.y = j + 0.5f;
                     Vector3 baryCoords = tri.GetBarycentricCoordinates(pt, out bool inside);
-                    //Console.WriteLine(baryCoords);
                     if (inside)
-                    {
-                        b.SetPixel(i, renderHeight - j, color);
+                    {                        
                         //Do some interpolation with the z-buffer here
                         z = tri.ZAt(baryCoords);
                         if(z >= depthBuffer[(i) + (renderHeight * (renderHeight - j))]) //Might wanna flip this
                         {
-                            
+                            b.SetPixel(i, renderHeight - j, color);
                             depthBuffer[(i + minX) + (renderHeight * (j + minY))] = z;
                         }                        
                     }

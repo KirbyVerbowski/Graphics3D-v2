@@ -104,7 +104,7 @@ namespace Graphics3D_v2
         private void StartRender()
         {
 
-            //camera.renderQueue[0].transform.Location = new Vector3(0, 10, 0);
+            camera.renderQueue[0].transform.Location = new Vector3(0, 5 * (float)Math.Sin(angle), 0);
             //camera.transform.Location = new Vector3(5 * (float)Math.Sin(angle), 0, 0);
             camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.05f);
             angle += 0.05f;
