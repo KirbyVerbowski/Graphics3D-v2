@@ -37,6 +37,7 @@ namespace Graphics3D_v2
                 this.z0 = z0; this.z1 = z1; this.z2 = z2;
             }
 
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
             private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c, out bool result)
             {
                 float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
@@ -112,6 +113,7 @@ namespace Graphics3D_v2
         //False if both off screen
         private bool EdgeClip(ref Vector3 e1, ref Vector3 e2, out bool moved1, out bool moved2)
         {
+            Vector3 bef1 = new Vector3(e1.x, e1.y, e1.z), bef2 = new Vector3(e2.x, e2.y, e2.z);
             moved1 = false; moved2 = false;
             if ((e1.x < -1 && e2.x < -1) ||
                             (e1.x > 1 && e2.x > 1)) //Both Points off the screen to left or right
@@ -188,7 +190,6 @@ namespace Graphics3D_v2
                     moved1 = true;
                 }
             }
-
             return true;
         }
 
@@ -429,16 +430,10 @@ namespace Graphics3D_v2
                             Triangle2 tri = new Triangle2(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
                             DrawTriangle(tri, b, depthBuffer, faceColor);
                         }
-                        
-
-                        //FillPolygon(drawPoints.ToArray(), b, depthBuffer, faceColor); Uncomment this to have a working (shitty) render
-                        
-
                        
                     }
                 }
             }
-            Console.WriteLine("Done render");
             return true;
         }
        
@@ -485,19 +480,25 @@ namespace Graphics3D_v2
 
         public void DrawTriangle(Triangle2 tri, DirectBitmap b, float[] depthBuffer, Color color)
         {
+            float zBuf;
+            int padding = 5;
             int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
             foreach(Vector2 v in tri.Points) //Get bounding box
             {
                 if (v.x > maxX)
                     maxX = (int)(v.x + 1);//Round up
                 if (v.x < minX)
-                    minX = (int)v.x;
+                    minX = (int)(v.x);
                 if (v.y > maxY)
                     maxY = (int)(v.y + 1);
                 if (v.y < minY)
-                    minY = (int)v.y;
+                    minY = (int)(v.y);
             }
             Vector2 pt = new Vector2();
+            maxX = (maxX + padding > renderWidth - 1 ? renderWidth-1 : maxX + padding);
+            maxY = (maxY + padding > renderHeight - 1 ? renderHeight-1 : maxY + padding);
+            minX = (minX - padding < 0 ? 0 : minX - padding);
+            minY = (minY - padding < 0 ? 0 : minY - padding);
             float z;
             for(int i = minX; i < maxX; i++)
             {
@@ -510,11 +511,17 @@ namespace Graphics3D_v2
                     {                        
                         //Do some interpolation with the z-buffer here
                         z = tri.ZAt(baryCoords);
-                        if(z >= depthBuffer[(i) + (renderHeight * (renderHeight - j))]) //Might wanna flip this
+                        zBuf = depthBuffer[(i) + (renderHeight * (renderHeight - j))];
+                        
+                        if (zBuf == 0 || z < zBuf) 
                         {
                             b.SetPixel(i, renderHeight - j, color);
-                            depthBuffer[(i + minX) + (renderHeight * (j + minY))] = z;
-                        }                        
+                            depthBuffer[(i) + (renderHeight * (renderHeight-j))] = z;
+                        }
+                        else
+                        {
+                            //Console.WriteLine(z + " buff at " + zBuf);
+                        }
                     }
                 }
             }
