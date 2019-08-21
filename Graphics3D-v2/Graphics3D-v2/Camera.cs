@@ -83,6 +83,7 @@ namespace Graphics3D_v2
         float aspectRatio;
         float nearClip = 1f;
         float farClip = 100;
+        Vertex vertex;
 
         public Camera(Transform transform, int width, int height, float horizFOV) : base(transform, new Mesh(@"..\..\Camera.obj"))
         {
@@ -227,7 +228,7 @@ namespace Graphics3D_v2
             return true;
         }
 
-        public bool Render(DirectBitmap b)
+        public bool Render(DirectBitmap b, Action<Fragment> frag, Action<Vertex> vert)
         {
             System.Diagnostics.Debug.Assert(b.Width == renderWidth && b.Height == renderHeight);
 
@@ -241,7 +242,12 @@ namespace Graphics3D_v2
             float screenNormCoeffZ = 1 / (projectionDistance * (float)Math.Tan(vertFOV));
             float[] depthBuffer = new float[renderWidth * renderHeight];
 
-            if(renderMode == RenderMode.Wireframe)
+            if (frag == null)
+                frag = DefaultFragShader;
+            if (vert == null)
+                vert = DefaultVertShader;
+
+            if (renderMode == RenderMode.Wireframe)
             {
                 foreach (Object3D obj in renderQueue)
                 {
@@ -298,11 +304,38 @@ namespace Graphics3D_v2
                         float dot = Vector3.Dot(mesh.faceNormals[face], -transform.Forward);
                         if (dot < 0) //Back face culling
                             continue;
+
                         Color faceColor = Color.FromArgb((int)(255 * dot), 0, 0);
 
-                        vert1 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 0]] - camPos);
-                        vert2 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 1]] - camPos);
-                        vert3 = transform.Rotation.Conjugate.RotateVector3(mesh.vertices[mesh.faces[face, 2]] - camPos);
+              //Region vertex shader
+
+                        vertex = new Vertex()
+                        {
+                            localPos = mesh.vertices[mesh.faces[face, 0]] + obj.transform.Location,
+                            objectPos = obj.transform.Location,
+                            camera = this
+                        };
+                        vert(vertex);
+                        vert1 = transform.Rotation.Conjugate.RotateVector3(vertex.localPos - camPos);
+
+                        vertex = new Vertex()
+                        {
+                            localPos = mesh.vertices[mesh.faces[face, 1]] + obj.transform.Location,
+                            objectPos = obj.transform.Location,
+                            camera = this
+                        };
+                        vert(vertex);
+                        vert2 = transform.Rotation.Conjugate.RotateVector3(vertex.localPos - camPos);
+
+                        vertex = new Vertex()
+                        {
+                            localPos = mesh.vertices[mesh.faces[face, 2]],
+                            objectPos = obj.transform.Location,
+                            camera = this
+                        };
+                        vert(vertex);
+                        vert3 = transform.Rotation.Conjugate.RotateVector3(vertex.localPos - camPos);
+               //End region vertex shader
 
                         e1.x = (projectionDistance * vert1.x) / vert1.y;           //Using similar triangles to project the verts onto the camera plane 
                         e1.z = (projectionDistance * vert1.z) / vert1.y;
@@ -325,7 +358,7 @@ namespace Graphics3D_v2
                         beforeClip1 = e1;
                         beforeClip2 = e2;
                         beforeClip3 = e3;
-                        List<Vector3> drawPoints = new List<Vector3>(); //Will be a poygon with up to 6 sides
+                        List<Vector3> drawPoints = new List<Vector3>(); //Will be a poygon at most 6 sides
                         bool added1 = false, added2 = false, added3 = false;
 
                         if(NearFarClip(ref e1, ref e2, out bool moved1nf, out bool moved2nf))
@@ -406,13 +439,13 @@ namespace Graphics3D_v2
                             Triangle[] tris = Triangulate(drawPoints.ToArray());
                             foreach (Triangle tri in tris)
                             {
-                                DrawTriangle(tri, b, depthBuffer, faceColor);
+                                DrawTriangle(tri, b, depthBuffer, faceColor, mesh.faceNormals[face], frag);
                             }
                         }
                         else if(drawPoints.Count == 3)
                         {
-                            Triangle tri = new Triangle(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);
-                            DrawTriangle(tri, b, depthBuffer, faceColor);
+                            Triangle tri = new Triangle(drawPoints[0], drawPoints[1], drawPoints[2], e1.y, e2.y, e3.y);                   
+                            DrawTriangle(tri, b, depthBuffer, faceColor, mesh.faceNormals[face], frag);
                         }
                        
                     }
@@ -421,6 +454,15 @@ namespace Graphics3D_v2
             return true;
         }
        
+        private void DefaultFragShader(Fragment fragment)
+        {
+
+        }
+
+        private void DefaultVertShader(Vertex vertex)
+        {
+
+        }
 
         //Takes a convex, counterclockwise winding n-gon and returns n - 2 list of triangles (fan method)
         private Triangle[] Triangulate(Vector3[] polygon)
@@ -461,8 +503,58 @@ namespace Graphics3D_v2
             }
             return points.ToArray();
         }
-
-        public void DrawTriangle(Triangle tri, DirectBitmap b, float[] depthBuffer, Color color)
+        /*
+        public void DrawTriangle(Triangle tri, DirectBitmap b, float[] depthBuffer, Color[] vertCols)
+        {
+            if(vertCols.Length != 3)
+            {
+                throw new IndexOutOfRangeException("smdh");
+            }
+            float zBuf;
+            int padding = 5;
+            int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+            foreach (Vector2 v in tri.Points) //Get bounding box
+            {
+                if (v.x > maxX)
+                    maxX = (int)(v.x + 1);//Round up
+                if (v.x < minX)
+                    minX = (int)(v.x);
+                if (v.y > maxY)
+                    maxY = (int)(v.y + 1);
+                if (v.y < minY)
+                    minY = (int)(v.y);
+            }
+            Vector2 pt = new Vector2();
+            maxX = (maxX + padding > renderWidth - 1 ? renderWidth - 1 : maxX + padding);
+            maxY = (maxY + padding > renderHeight - 1 ? renderHeight - 1 : maxY + padding);
+            minX = (minX - padding < 0 ? 0 : minX - padding);
+            minY = (minY - padding < 0 ? 0 : minY - padding);
+            float z;
+            for (int i = minX; i < maxX; i++)
+            {
+                for (int j = minY + 1; j <= maxY; j++)
+                {
+                    pt.x = i + 0.5f;
+                    pt.y = j + 0.5f;
+                    Vector3 baryCoords = tri.GetBarycentricCoordinates(pt, out bool inside);
+                    if (inside)
+                    {
+                        //Do some interpolation with the z-buffer here
+                        z = tri.ZAt(baryCoords);
+                        zBuf = depthBuffer[(i) + (renderHeight * (renderHeight - j))];
+                        
+                        
+                        if (zBuf == 0 || z < zBuf)
+                        {
+                            b.SetPixel(i, renderHeight - j, color);
+                            depthBuffer[(i) + (renderHeight * (renderHeight - j))] = z;
+                        }
+                    }
+                }
+            }
+        }
+        */
+        public void DrawTriangle(Triangle tri, DirectBitmap b, float[] depthBuffer, Color color, Vector3 normal, Action<Fragment> frag)
         {
             float zBuf;
             int padding = 5;
@@ -492,24 +584,53 @@ namespace Graphics3D_v2
                     pt.y = j + 0.5f;
                     Vector3 baryCoords = tri.GetBarycentricCoordinates(pt, out bool inside);
                     if (inside)
-                    {                        
+                    {
                         //Do some interpolation with the z-buffer here
                         z = tri.ZAt(baryCoords);
                         zBuf = depthBuffer[(i) + (renderHeight * (renderHeight - j))];
                         
                         if (zBuf == 0 || z < zBuf) 
                         {
-                            b.SetPixel(i, renderHeight - j, color);
-                            depthBuffer[(i) + (renderHeight * (renderHeight-j))] = z;
+                            //Create fragment object and call frag shader
+                            Fragment fragment = new Fragment()
+                            {
+                                color = color,
+                                triangle = tri,
+                                normal = normal,
+                                camera = this,
+                                x = i,
+                                y = j,
+                                z = z
+                            };
+                            frag(fragment);     
+
+
+                            b.SetPixel(fragment.x, renderHeight - fragment.y, fragment.color);
+                            depthBuffer[(fragment.x) + (renderHeight * (renderHeight- fragment.y))] = fragment.z;
                         }
-                        else
-                        {
-                            //Console.WriteLine(z + " buff at " + zBuf);
-                        }
+
                     }
                 }
             }
         }
     
+    }
+
+    
+    class Fragment
+    {
+        public Color color;
+        public float z;
+        public int x, y;
+        public Vector3 normal;
+        public Camera camera;
+        public Camera.Triangle triangle;
+    }
+
+    class Vertex
+    {
+        public Vector3 localPos;
+        public Vector3 objectPos;
+        public Camera camera;
     }
 }

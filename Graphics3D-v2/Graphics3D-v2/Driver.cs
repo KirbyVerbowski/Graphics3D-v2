@@ -65,11 +65,10 @@ namespace Graphics3D_v2
         [STAThread]
         static void Main(string[] args)
         {
-            Camera camera = new Camera(new Transform(), 512, 256, 0.8552f);
+            Camera camera = new Camera(new Transform(new Vector3(0,-2, 0)), 512, 256, 0.8552f);
             AppForm app = new AppForm(camera);
             
-            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 5, 0)), new Mesh(@"..\..\Suzanne.obj")));
-            
+            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 0, 0)), new Mesh(@"\Users\Kirby\Desktop\icosphere.obj")));
             Application.Run(app);            
         }
     }
@@ -80,9 +79,11 @@ namespace Graphics3D_v2
         public Camera camera;
         public List<Object3D> sceneObjects;
         public System.Windows.Forms.Timer renderTimer;
+        public System.Diagnostics.Stopwatch appTimer;
         private bool rendering = false;
         float angle = 0;
         public DirectBitmap image;
+
 
         public AppForm(Camera c)
         {
@@ -92,12 +93,23 @@ namespace Graphics3D_v2
             camera = c;
             sceneObjects = new List<Object3D>();
             renderTimer = new System.Windows.Forms.Timer();
+            appTimer = new System.Diagnostics.Stopwatch();
+            appTimer.Start();
             renderTimer.Interval = 4;
             renderTimer.Start();
             renderTimer.Tick += ((sender, e) => StartRender());
             DoubleBuffered = true;
             image = new DirectBitmap(Width, Height);
 
+            KeyDown += AppForm_KeyDown;
+        }
+
+        private void AppForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Up)
+                camera.transform.Location += Vector3.UnitVectorY;
+            else if (e.KeyCode == Keys.Down)
+                camera.transform.Location -= Vector3.UnitVectorY;
         }
 
         private void StartRender()
@@ -110,13 +122,39 @@ namespace Graphics3D_v2
             if (!rendering) Invalidate();
         }
 
+        private void FogShader(Fragment f)
+        {
+            byte a, r, g, b;
+
+            r = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorZ)) * 255);
+            g = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorX)) * 255);
+            b = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorY)) * 255);
+
+            float fac = 1 - (f.z / 3f);
+            if (fac < 0) fac = 0;
+            
+            a = (byte)(f.color.A * fac);
+            r = (byte)(r * fac);
+            g = (byte)(g * fac);
+            b = (byte)(b * fac);
+            f.color = Color.FromArgb(a, r, g, b);
+        }
+
+        private void SquishShader(Vertex v)
+        {
+            float total = v.localPos.x + v.localPos.y + v.localPos.z;
+            float fac = (float)((Math.Sin(angle + total) + 2) / 2);
+
+            v.localPos *= fac;
+        }
+
         private void AppForm_Paint(object sender, PaintEventArgs e)
         {
             
             rendering = true;
             image.Clear();
-            camera.Render(image);
-            Camera.Triangle t = new Camera.Triangle(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
+            camera.Render(image, FogShader, SquishShader);
+            //Camera.Triangle t = new Camera.Triangle(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
             //camera.DrawTriangle(t, image, new float[5], Color.Red);
             e.Graphics.DrawImage(image.Bitmap, new Point(0, 0));
 
