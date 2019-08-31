@@ -65,10 +65,10 @@ namespace Graphics3D_v2
         [STAThread]
         static void Main(string[] args)
         {
-            Camera camera = new Camera(new Transform(new Vector3(0,-2, 0)), 512, 256, 0.8552f);
+            Camera camera = new Camera(new Transform(new Vector3(0,-7, 0)), 512, 256, 0.155f);
             AppForm app = new AppForm(camera);
             
-            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 0, 0)), new Mesh(@"\Users\Kirby\Desktop\icosphere.obj")));
+            camera.renderQueue.Add(new Object3D(new Transform(new Vector3(0, 0, -0.5f), 0.5f * Vector3.One), new Mesh(@"\Users\Kirby\Desktop\Eddie.obj")));
             Application.Run(app);            
         }
     }
@@ -83,6 +83,9 @@ namespace Graphics3D_v2
         private bool rendering = false;
         float angle = 0;
         public DirectBitmap image;
+
+        private Bitmap cubeTexture;
+        private int texWidth, texHeight;
 
 
         public AppForm(Camera c)
@@ -102,6 +105,9 @@ namespace Graphics3D_v2
             image = new DirectBitmap(Width, Height);
 
             KeyDown += AppForm_KeyDown;
+
+            cubeTexture = new Bitmap(@"\Users\Kirby\Desktop\Eddie Texture.png");
+            texWidth = cubeTexture.Width; texHeight = cubeTexture.Height;
         }
 
         private void AppForm_KeyDown(object sender, KeyEventArgs e)
@@ -110,34 +116,61 @@ namespace Graphics3D_v2
                 camera.transform.Location += Vector3.UnitVectorY;
             else if (e.KeyCode == Keys.Down)
                 camera.transform.Location -= Vector3.UnitVectorY;
+            else if (e.KeyCode == Keys.Space)
+                camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.075f);
+            else if (e.KeyCode == Keys.A)
+                camera.horizFOV -= 0.1f;
+            else if (e.KeyCode == Keys.D)
+                camera.horizFOV += 0.1f;
         }
 
         private void StartRender()
         {
-
-            //camera.renderQueue[0].transform.Location = new Vector3(2 * (float)Math.Cos(angle), 15, 2 * (float)Math.Sin(angle) + 0.5f);
-            //camera.transform.Location = new Vector3(5 * (float)Math.Sin(angle), 0, 0);
+                       
             camera.renderQueue[0].transform.Rotate(new Vector3(0, 0, 1), 0.025f);
             angle += 0.05f;
             if (!rendering) Invalidate();
         }
 
-        private void FogShader(Fragment f)
+        Color[,] texture = new Color[2, 2] { { Color.Red, Color.Yellow }, { Color.Blue, Color.Green } };
+
+        Color Interpolate(float x, float y)
         {
             byte a, r, g, b;
 
-            r = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorZ)) * 255);
-            g = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorX)) * 255);
-            b = (byte)(Math.Abs(Vector3.Dot(f.normal, Vector3.UnitVectorY)) * 255);
+            a = (byte)(texture[0, 0].A * (1 - x) * (1 - y) + texture[1, 0].A * (x) * (1 - y) + texture[0, 1].A * (1 - x) * y + texture[1, 1].A * x * y);
+            r = (byte)(texture[0, 0].R * (1 - x) * (1 - y) + texture[1, 0].R * (x) * (1 - y) + texture[0, 1].R * (1 - x) * y + texture[1, 1].R * x * y);
+            g = (byte)(texture[0, 0].G * (1 - x) * (1 - y) + texture[1, 0].G * (x) * (1 - y) + texture[0, 1].G * (1 - x) * y + texture[1, 1].G * x * y);
+            b = (byte)(texture[0, 0].B * (1 - x) * (1 - y) + texture[1, 0].B * (x) * (1 - y) + texture[0, 1].B * (1 - x) * y + texture[1, 1].B * x * y);
+            return Color.FromArgb(a, r, g, b);
+        }
 
-            float fac = 1 - (f.z / 3f);
-            if (fac < 0) fac = 0;
+        private Vector3 lampPos = new Vector3(1, -2, 2);
+
+        private void SmoothShader(Fragment f)
+        {
+            float fac;
+            fac = Vector3.Dot(f.normal, lampPos.Normalized);
             
-            a = (byte)(f.color.A * fac);
-            r = (byte)(r * fac);
-            g = (byte)(g * fac);
-            b = (byte)(b * fac);
-            f.color = Color.FromArgb(a, r, g, b);
+            if (fac < 0) fac = 0;
+ 
+            Color pix = cubeTexture.GetPixel((int)((texWidth - 1) * f.uv.x), (int)((texHeight - 1) * (1 - f.uv.y)));
+            f.color = Color.FromArgb(pix.A, (byte)(fac * pix.R), (byte)(fac * pix.G), (byte)(fac * pix.B));
+        }
+
+        private void FogShader(Fragment f)
+        {
+            byte a, r = f.color.R, g = f.color.G, b = f.color.B;
+
+            if(angle % 20 > 10)
+            {
+                f.color = Interpolate(f.uv.x, f.uv.y);
+            }
+            else
+            {
+                f.color = cubeTexture.GetPixel((int)(249 * f.uv.x), (int)(249 * f.uv.y));
+            }
+
         }
 
         private void SquishShader(Vertex v)
@@ -153,9 +186,7 @@ namespace Graphics3D_v2
             
             rendering = true;
             image.Clear();
-            camera.Render(image, FogShader, SquishShader);
-            //Camera.Triangle t = new Camera.Triangle(new Vector2(50.4f, 60f), new Vector2(250.4f, 120f), new Vector2(100.234f, 135f), 20, 50, 90);
-            //camera.DrawTriangle(t, image, new float[5], Color.Red);
+            camera.Render(image, SmoothShader, null);
             e.Graphics.DrawImage(image.Bitmap, new Point(0, 0));
 
             rendering = false;

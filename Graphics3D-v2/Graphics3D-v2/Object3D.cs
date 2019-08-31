@@ -139,6 +139,8 @@ namespace Graphics3D_v2
             for (int i = 0; i < TransformedMesh.vertices.Length; i++)
             {
                 TransformedMesh.vertices[i] = transform.Rotation.RotateVector3(mesh.vertices[i] * transform.Scale) + transform.Location;
+                if(i < mesh.vertexNormalCoords.Length)
+                    TransformedMesh.vertexNormalCoords[i] = transform.Rotation.RotateVector3(mesh.vertexNormalCoords[i] * transform.Scale) + transform.Location;
             }
 
             if((ops & TransformOps.Rotation) != 0)

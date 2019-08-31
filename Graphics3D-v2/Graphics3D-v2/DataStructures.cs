@@ -438,8 +438,12 @@ namespace Graphics3D_v2
     public class Mesh
     {
         public readonly Vector3[] vertices;
+        public readonly Vector3[] vertexNormalCoords;
         public readonly int[,] edges;
         public readonly int[,] faces; //list of vetex indices       
+        public readonly int[,] uvs;
+        public readonly int[,] vertexNormals;
+        public readonly Vector2[] uvcoords;
         public readonly string name;
         public Vector3[] faceNormals;
 
@@ -485,8 +489,12 @@ namespace Graphics3D_v2
         public Mesh(Mesh other)
         {
             vertices = other.vertices.Clone() as Vector3[];
+            vertexNormalCoords = other.vertexNormalCoords.Clone() as Vector3[];
+            vertexNormals = other.vertexNormals.Clone() as int[,];
             faces = other.faces.Clone() as int[,];
             edges = other.edges.Clone() as int[,];
+            uvcoords = other.uvcoords.Clone() as Vector2[];
+            uvs = other.uvs.Clone() as int[,];
             name = other.name;
         }
         public Mesh(string path)
@@ -495,9 +503,14 @@ namespace Graphics3D_v2
             string[] words;
             char[] lineCh;
             List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> vertexNormalCoords = new List<Vector3>();
             Vector3 temp = Vector3.Zero;
+            Vector2 temp2 = Vector2.Zero;
             List<int[]> faces = new List<int[]>();
             List<int[]> edges = new List<int[]>();
+            List<Vector2> uvcoords = new List<Vector2>();
+            List<int[]> uvs = new List<int[]>();
+            List<int[]> vertexNormals = new List<int[]>();
             int face = 0;
             System.IO.StreamReader stream = new System.IO.StreamReader(path);
 
@@ -529,10 +542,20 @@ namespace Graphics3D_v2
                         vertices.Add(temp);
                         break;
 
+                    case "vn":
+                        for (int i = 1; i < 4; i++)
+                        {
+                            temp[i - 1] = float.Parse(words[i]);
+                        }
+                        vertexNormalCoords.Add(temp);
+                        break;
+
                     case "f":
                         StringBuilder sb = new StringBuilder();
                         int j = 0;
                         faces.Add(new int[3]);
+                        uvs.Add(new int[3]);
+                        vertexNormals.Add(new int[3]);
                         for (int i = 1; i < words.Length; i++)
                         {
                             if (!words[i].Contains("/"))
@@ -546,19 +569,62 @@ namespace Graphics3D_v2
                                     sb.Append(words[i].ElementAt(j));
                                     j++;
                                 }
-                                j = 0;
+
                             }
 
-
-                            faces[face][i-1] = (int.Parse(sb.ToString()) - 1);
+                            faces[face][i - 1] = (int.Parse(sb.ToString()) - 1);
                             if ((int.Parse(sb.ToString()) - 1) < 0)
                             {
                                 throw new Exception("Cannot parse negative-indexed files");
                             }
                             sb.Clear();
+
+                            j++; //Move cursor to the char after '/'
+                            while (words[i].ElementAt(j) != '/')
+                            {
+                                sb.Append(words[i].ElementAt(j));
+                                j++;
+                            }
+                            if (sb.Length > 0)
+                            {
+                                uvs[face][i - 1] = (int.Parse(sb.ToString()) - 1);
+                                if ((int.Parse(sb.ToString()) - 1) < 0)
+                                {
+                                    throw new Exception("Cannot parse negative-indexed files");
+                                }
+                                sb.Clear();
+                            }
+
+                            j++; //Move cursor again
+                            while (j < words[i].Length && words[i].ElementAt(j) != '/')
+                            {
+                                sb.Append(words[i].ElementAt(j));
+                                j++;
+                            }
+                            if (sb.Length > 0)
+                            {
+                                vertexNormals[face][i - 1] = (int.Parse(sb.ToString()) - 1);
+                                if ((int.Parse(sb.ToString()) - 1) < 0)
+                                {
+                                    throw new Exception("Cannot parse negative-indexed files");
+                                }
+                                sb.Clear();
+                            }
+
+                            j = 0;
                         }
                         face++;
                         break;
+
+                    case "vt":
+                        for (int i = 1; i < 3; i++)
+                        {
+                            temp2[i - 1] = float.Parse(words[i]);
+                        }
+                        uvcoords.Add(temp2);
+                        break;
+
+
 
                     case "o":
                         name = words[1];
@@ -569,12 +635,27 @@ namespace Graphics3D_v2
             stream.Close();
 
             this.vertices = vertices.ToArray();
+            this.vertexNormalCoords = vertexNormalCoords.ToArray();
+            if(vertexNormalCoords.Count == 0)
+            {
+                vertexNormalCoords.Add(Vector3.Zero);
+            }
+            if(uvcoords.Count == 0)
+            {
+                uvcoords.Add(Vector2.Zero);
+            }
+            this.uvcoords = uvcoords.ToArray();
+            this.uvs = new int[faces.Count, 3];
+            this.vertexNormals = new int[faces.Count, 3];
+            this.vertexNormalCoords = vertexNormalCoords.ToArray();
             this.faces = new int[faces.Count, 3];
             for (int i = 0; i < faces.Count; i++)
             {
                 for(int j = 0; j < 3; j++)
                 {
                     this.faces[i, j] = faces[i][j];
+                    this.uvs[i, j] = uvs[i][j];
+                    this.vertexNormals[i, j] = vertexNormals[i][j];
                 }
                 
             }
