@@ -1,152 +1,235 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Reflection;
+using System.Timers;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace Graphics3D_v2
 {
-    [Flags]
-    public enum TransformOps { Location = 1, Scale = 2, Rotation = 4, All = 7 }
-
-    public delegate void TransformUpdateDelegate(TransformOps op);
-
-    public class Transform
+    public class Object3D
     {
-        private Vector3 _Location;
-        public Vector3 Location {
-            get { return _Location; }
-            set { _Location = value; transformUpdate(TransformOps.Location); }
-        }
-        private Vector3 _Scale;
-        public Vector3 Scale {
-            get { return _Scale; }
-            set { _Scale = value; transformUpdate(TransformOps.Scale); }
-        }
-        private Quaternion _Rotation;
-        public Quaternion Rotation {
-            get { return _Rotation; }
-            set { _Rotation = value; transformUpdate(TransformOps.Rotation); }
-        }
-        public TransformUpdateDelegate transformUpdate;
+        public List<Type> components = new List<Type>();
+        public Dictionary<Type, FieldInfo[]> componentFieldInfo = new Dictionary<Type, FieldInfo[]>();
+        public Dictionary<Type, object[]> initialVals = new Dictionary<Type, object[]>();
 
-        public Transform(Vector3 location, Vector3 scale, Quaternion rotation)
+        public SceneManager scene;
+        public bool enabled = true; //Will this object be affected by scenemanager (start / update)
+        public bool visible = true;
+        public Transform transform;
+        public string name = "unnamed object";
+
+        public Object3D(SceneManager scene)
         {
-            _Location = location;
-            _Scale = scale;
-            _Rotation = rotation;
+            this.scene = scene;
+            this.transform = new Transform();
         }
-        public Transform(Vector3 location, Vector3 scale)
+        public Object3D(SceneManager scene, Transform transform)
         {
-            _Location = location;
-            _Scale = scale;
-            _Rotation = Quaternion.Identity;
+            this.scene = scene;
+            this.transform = transform;
         }
-        public Transform(Vector3 location)
+        public Object3D(SceneManager scene, Transform transform, string name)
         {
-            _Location = location;
-            _Scale = Vector3.One;
-            _Rotation = Quaternion.Identity;
-        }
-        public Transform()
-        {
-            _Location = Vector3.Zero;
-            _Scale = Vector3.One;
-            _Rotation = Quaternion.Identity;
+            this.scene = scene;
+            this.transform = transform;
+            this.name = name;
         }
 
-        public Vector3 Forward {
-            get { return Rotation.RotateVector3(Vector3.UnitVectorY); }
-            private set { }
+        public void AddComponent(Component component)
+        {
+            foreach (Type c in components)
+            {
+                if (component.GetType() == c)
+                {
+                    throw new Exception("Can only have one component per type");
+                }
+            }
+            Type compType = component.GetType();
+            components.Add(compType);
+            componentFieldInfo.Add(compType, compType.GetFields());
+            object[] vals = new object[componentFieldInfo[compType].Length];
+            for(int i = 0; i < vals.Length; i++)
+            {
+                vals[i] = componentFieldInfo[compType][i].GetValue(component);
+            }
+            initialVals.Add(compType, vals);
         }
-        public Vector3 Up {
-            get { return Rotation.RotateVector3(Vector3.UnitVectorZ); }
-            private set { }
-        }
-        public Vector3 Right {
-            get { return Rotation.RotateVector3(Vector3.UnitVectorX); }
-            private set { }
+        public void RemoveComponent(Type component)
+        {
+            foreach (Type c in components)
+            {
+                if(component == c){
+                    components.Remove(c);
+                    initialVals.Remove(c);
+                    return;
+                }
+            }
         }
 
-        public void Rotate(Quaternion rotBy)
+        public object GetComponent(Type component)
         {
-            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
-            {
-                this.Rotation = rotBy * Quaternion.Identity;
-            }
-            else
-            {
-                this.Rotation = rotBy * this.Rotation;
-            }
-        }
-        public void Rotate(Vector3 axis, float angle)
-        {
-            Quaternion rotBy = new Quaternion(axis, angle);
-            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
-            {
-                this.Rotation = rotBy * Quaternion.Identity;
-            }
-            else
-            {
-                this.Rotation = rotBy * this.Rotation;
-            }
+            return scene.GetComponent(this, component);
         }
     }
 
-    public class Object3D
+    public class SceneManager
     {
-        public Transform transform;
-        private Mesh mesh;
-        public Mesh TransformedMesh {
-            get; private set;
-        }
-        public bool noMesh = false;
-        //Gizmo
+        private int UPDATEINTERVAL = 42;
+        public delegate void PaintEventDelegate(DirectBitmap image);
+        public DirectBitmap canvas;
+        public object canvasLock { get; private set; }
+        public List<Object3D> sceneObjects;
+        public Dictionary<Object3D, List<Component>> componentInstances;
 
-        public Object3D(Transform transform, Mesh mesh)
+        private bool updating = false;
+        private System.Timers.Timer updateTimer;
+        
+
+        public bool Started => updateTimer.Enabled;
+        public Color worldColor = Color.NavajoWhite;
+        public PaintEventDelegate PaintEvent;
+
+        public SceneManager(object canvasLock)
         {
-            this.mesh = mesh;
-            TransformedMesh = new Mesh(mesh);
-            this.transform = transform;
-            this.transform.transformUpdate = UpdateMesh;
-            this.transform.transformUpdate.Invoke(TransformOps.All);
-        }
-        public Object3D(Mesh mesh)
-        {
-            this.mesh = mesh;
-            TransformedMesh = new Mesh(mesh);
-            transform = new Transform();
-            transform.transformUpdate = UpdateMesh;
-            transform.transformUpdate.Invoke(TransformOps.All);
-        }
-        public Object3D(Transform transform)
-        {
-            noMesh = true;
-            mesh = null;
-            TransformedMesh = null;
-            this.transform = transform; 
-        }
-        public Object3D()
-        {
-            noMesh = true;
-            mesh = null;
-            TransformedMesh = null;
-            transform = new Transform();
+            updateTimer = new System.Timers.Timer(UPDATEINTERVAL);
+            updateTimer.Elapsed += ((e, sender) => { if(!updating)UpdateScene(); });
+            sceneObjects = new List<Object3D>();
+            componentInstances = new Dictionary<Object3D, List<Component>>();
+            this.canvasLock = canvasLock;
         }
 
-        private void UpdateMesh(TransformOps ops)
+        public void AddObject(Object3D obj)
         {
-            for (int i = 0; i < TransformedMesh.vertices.Length; i++)
+            sceneObjects.Add(obj);
+            componentInstances.Add(obj, new List<Component>());
+        }
+
+        public void RemoveObject(Object3D obj)
+        {
+            sceneObjects.Remove(obj);
+            componentInstances.Remove(obj);
+        }
+
+        public Component GetComponent(Object3D obj, Type type)
+        {
+            if (!Started)
+                throw new Exception("GameEngine not running, instance does not exist yet");
+            foreach(Component c in componentInstances[obj])
             {
-                TransformedMesh.vertices[i] = transform.Rotation.RotateVector3(mesh.vertices[i] * transform.Scale) + transform.Location;
-                if(i < mesh.vertexNormalCoords.Length)
-                    TransformedMesh.vertexNormalCoords[i] = transform.Rotation.RotateVector3(mesh.vertexNormalCoords[i] * transform.Scale) + transform.Location;
+                if(c.GetType() == type)
+                {
+                    return c;
+                }
             }
+            return null;
+        }
 
-            if((ops & TransformOps.Rotation) != 0)
+        public void Start()
+        {
+            foreach (Object3D sceneObject in sceneObjects)
             {
-                TransformedMesh.CalculateFaceNormals();
+                if (sceneObject.enabled)
+                {
+                    //Do requireComponent check on all objects and components
+                    
+                    foreach (Type c in sceneObject.components)
+                    {
+                        Attribute[] objectAttrs = Attribute.GetCustomAttributes(c);              
+                        foreach (Attribute attr in objectAttrs)
+                        {
+                            Console.WriteLine(attr.ToString());
+                            if (attr is RequireComponentAttribute)
+                            {
+                                if (!sceneObject.components.Contains(((RequireComponentAttribute)attr).component))
+                                {
+                                    throw new Exception((sceneObject.name+": Component "+ c+" requires component of type "+((RequireComponentAttribute)attr).component.ToString()));
+                                }
+                            }
+                        }
+                        Component compInstance = (Component)Activator.CreateInstance(c);
+                        FieldInfo[] fi = sceneObject.componentFieldInfo[c];
+                        for(int i = 0; i < fi.Length; i++)
+                        {
+                            fi[i].SetValue(compInstance, sceneObject.initialVals[c][i]);
+                        }
+                        compInstance.object3D = sceneObject;                        
+                        componentInstances[sceneObject].Add(compInstance);
+                    }
+                }                
             }
+            updateTimer.Start(); //Move this below
+            foreach (Object3D sceneObject in sceneObjects)
+            {
+                if (sceneObject.enabled)
+                {
+                    foreach (Component c in componentInstances[sceneObject])
+                    {
+                        c.Start();
+                    }
+                }
+            }
+        }
+
+        public void Stop()
+        {
+            updateTimer.Stop();
+            foreach (List<Component> comps in componentInstances.Values)
+            {
+                comps.Clear();
+            }
+        }
+
+        private void UpdateScene()
+        {
+            updating = true;
+            foreach(Object3D obj in sceneObjects)
+            {
+                foreach(Component c in componentInstances[obj])
+                {
+                    c.Update();
+                }
+            }
+            updating = false;
+        }
+
+    }
+
+    public static class Input
+    {
+        private static Form appForm;
+        private static bool initialized = false;
+
+        private static bool[] keyDownList = new bool[Enum.GetNames(typeof(Keys)).Length];
+
+        public static void SetForm(Form form)
+        {
+            if(appForm != null)
+            {
+                appForm.KeyUp -= AppForm_KeyUp;
+                appForm.KeyDown -= AppForm_KeyDown;
+            }
+            appForm = form;
+            initialized = true;
+            form.KeyDown += AppForm_KeyDown;
+            form.KeyUp += AppForm_KeyUp;
+        }
+
+        public static bool KeyHeld(Keys key)
+        {
+            if (!initialized)
+                throw new Exception("Input source not set to a form");
+            return keyDownList[(int)key];
+        }
+
+        private static void AppForm_KeyUp(object sender, KeyEventArgs e)
+        {
+            keyDownList[(int)e.KeyCode] = false;
+        }
+
+        private static void AppForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            keyDownList[(int)e.KeyCode] = true;
         }
     }
 }

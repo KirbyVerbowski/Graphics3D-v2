@@ -3,10 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Graphics3D_v2
 {
+    public delegate void FragmentShaderDelegate(Fragment f);
+    public delegate void VertexShaderDelegate(Vertex v);
+
     public static class MathConst
     {
         public const float DEG2RAD = 0.0174533f;
@@ -161,7 +167,7 @@ namespace Graphics3D_v2
             }
 
         }
-
+        /*
         public static implicit operator Vector3(Vector2 v)
         {
             return new Vector3(v.x, v.y, 0);
@@ -169,7 +175,7 @@ namespace Graphics3D_v2
         public static implicit operator Vector2(Vector3 v)
         {
             return new Vector2(v.x, v.z);   ///!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        }
+        }*/
     }
 
     public struct Vector3
@@ -691,6 +697,286 @@ namespace Graphics3D_v2
         }
     }
 
+    public class Fragment
+    {
+        public Vector2 uv;
+        public System.Drawing.Color color;
+        public float z;
+        public int x, y;
+        public Vector3 normal;
+        public Vector3 faceNormal;
+        public Camera camera;
+        public Mesh thisMesh;
+        public Triangle triangle;
+    }
 
+    public class Vertex
+    {
+        public Vector3 location;
+        public Vector3 objectPos;
+        public Camera camera;
+    }
 
+    [Flags]
+    public enum TransformOps { Location = 1, Scale = 2, Rotation = 4, All = 7 }
+
+    public delegate void TransformUpdateDelegate(TransformOps op);
+
+    public class Transform
+    {
+        private Vector3 _Location;
+        public Vector3 Location {
+            get { return _Location; }
+            set { _Location = value; transformUpdate(TransformOps.Location); }
+        }
+        private Vector3 _Scale;
+        public Vector3 Scale {
+            get { return _Scale; }
+            set { _Scale = value; transformUpdate(TransformOps.Scale); }
+        }
+        private Quaternion _Rotation;
+        public Quaternion Rotation {
+            get { return _Rotation; }
+            set { _Rotation = value; transformUpdate(TransformOps.Rotation); }
+        }
+        public TransformUpdateDelegate transformUpdate;
+
+        public Transform(Vector3 location, Vector3 scale, Quaternion rotation)
+        {
+            _Location = location;
+            _Scale = scale;
+            _Rotation = rotation;
+        }
+        public Transform(Vector3 location, Vector3 scale)
+        {
+            _Location = location;
+            _Scale = scale;
+            _Rotation = Quaternion.Identity;
+        }
+        public Transform(Vector3 location)
+        {
+            _Location = location;
+            _Scale = Vector3.One;
+            _Rotation = Quaternion.Identity;
+        }
+        public Transform()
+        {
+            _Location = Vector3.Zero;
+            _Scale = Vector3.One;
+            _Rotation = Quaternion.Identity;
+        }
+
+        public Vector3 Forward {
+            get { return Rotation.RotateVector3(Vector3.UnitVectorY); }
+            private set { }
+        }
+        public Vector3 Up {
+            get { return Rotation.RotateVector3(Vector3.UnitVectorZ); }
+            private set { }
+        }
+        public Vector3 Right {
+            get { return Rotation.RotateVector3(Vector3.UnitVectorX); }
+            private set { }
+        }
+
+        public void Rotate(Quaternion rotBy)
+        {
+            rotBy = rotBy.Conjugate;
+            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
+            {
+                this.Rotation = rotBy * Quaternion.Identity;
+            }
+            else
+            {
+                this.Rotation = rotBy * this.Rotation;
+            }
+        }
+        public void Rotate(Vector3 axis, float angle)
+        {
+            Quaternion rotBy = new Quaternion(axis, angle).Conjugate;
+            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
+            {
+                this.Rotation = rotBy * Quaternion.Identity;
+            }
+            else
+            {
+                this.Rotation = rotBy * this.Rotation;
+            }
+        }
+    }
+
+    public class Triangle
+    {
+        public Vector2 v0, v1, v2;
+        public Vector2 uv0, uv1, uv2;
+        public float z0, z1, z2;
+        public Vector3 vn0, vn1, vn2;
+        public Vector2[] Points {
+            get { return new Vector2[] { v0, v1, v2 }; }
+        }
+        public Triangle(Vector2 v0, Vector2 v1, Vector2 v2, float z0, float z1, float z2, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector3 vn0, Vector3 vn1, Vector3 vn2)
+        {
+            this.v0 = v0; this.v1 = v1; this.v2 = v2;
+            this.z0 = z0; this.z1 = z1; this.z2 = z2;
+            this.uv0 = uv0; this.uv1 = uv1; this.uv2 = uv2;
+            this.vn0 = vn0; this.vn1 = vn1; this.vn2 = vn2;
+        }
+
+        public Triangle()
+        {
+            v0 = Vector2.Zero; v1 = Vector2.Zero; v2 = Vector2.Zero;
+            uv0 = Vector2.Zero; uv1 = Vector2.Zero; uv2 = Vector2.Zero;
+            z0 = 0; z1 = 0; z2 = 0;
+            vn0 = Vector3.Zero; vn1 = Vector3.Zero; vn2 = Vector3.Zero;
+        }
+
+        private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c, out bool result)
+        {
+            float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+            result = fresult >= 0;
+            return fresult;
+        }
+        private float EdgeFunction(Vector2 a, Vector2 b, Vector2 c)
+        {
+            return -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+        }
+
+        public bool InsideTriangle(Vector2 point)
+        {
+            EdgeFunction(v0, v1, point, out bool result1);
+            EdgeFunction(v1, v2, point, out bool result2);
+            EdgeFunction(v2, v0, point, out bool result3);
+            return result1 && result2 && result3;
+        }
+
+        public Vector3 GetBarycentricCoordinates(Vector2 point)
+        {
+            float area = EdgeFunction(v0, v1, v2);
+            float w0 = EdgeFunction(v1, v2, point);
+            float w1 = EdgeFunction(v2, v0, point);
+            float w2 = EdgeFunction(v0, v1, point);
+            return new Vector3(w0 / area, w1 / area, w2 / area);
+        }
+        public Vector3 GetBarycentricCoordinates(Vector2 point, out bool inTri)
+        {
+            float area = EdgeFunction(v0, v1, v2);
+            float w0 = EdgeFunction(v1, v2, point, out bool res1);
+            float w1 = EdgeFunction(v2, v0, point, out bool res2);
+            float w2 = EdgeFunction(v0, v1, point, out bool res3);
+            inTri = res1 && res2 && res3;
+            return new Vector3(w0 / area, w1 / area, w2 / area);
+        }
+
+        public Vector3 NormalAt(Vector3 barycentricCoords)
+        {
+            return vn0 * barycentricCoords.x + vn1 * barycentricCoords.y + vn2 * barycentricCoords.z;
+        }
+
+        public Vector3 NormalAt(Vector2 pt)
+        {
+            return NormalAt(GetBarycentricCoordinates(pt));
+        }
+
+        public Vector2 UVAt(Vector3 barycentricCoords)
+        {
+            return uv0 * barycentricCoords.x + uv1 * barycentricCoords.y + uv2 * barycentricCoords.z;
+        }
+
+        public Vector2 UVAt(Vector2 pt)
+        {
+            return UVAt(GetBarycentricCoordinates(pt));
+        }
+
+        public float ZAt(Vector3 baryCentricCoords)
+        {
+            return z0 * baryCentricCoords.x + z1 * baryCentricCoords.y + z2 * baryCentricCoords.z;
+        }
+
+        public override string ToString()
+        {
+            return "(" + v0 + v1 + v2 + ")";
+        }
+    }
+
+    public class DirectBitmap : IDisposable
+    {
+        public Bitmap Bitmap { get; private set; }
+        public Int32[] Bits { get; private set; }
+        public bool Disposed { get; private set; }
+        public int Height { get; private set; }
+        public int Width { get; private set; }
+        public BitmapData bitmapData;
+        public Int32[] Pixels;
+
+        protected GCHandle BitsHandle { get; private set; }
+
+        public DirectBitmap(int width, int height)
+        {
+            Width = width;
+            Height = height;
+            Bits = new Int32[width * height];
+            Pixels = new Int32[width * height];
+            BitsHandle = GCHandle.Alloc(Bits, GCHandleType.Pinned);
+            Bitmap = new Bitmap(width, height, width * 4, PixelFormat.Format32bppPArgb, BitsHandle.AddrOfPinnedObject());
+        }
+
+        public Bitmap ReadOnlyClone()
+        {
+            return Bitmap.Clone(new Rectangle(0, 0, Bitmap.Width, Bitmap.Height), Bitmap.PixelFormat);
+        }
+
+        public void LockBits()
+        {
+            bitmapData = Bitmap.LockBits(new Rectangle(0, 0, Width, Height), ImageLockMode.ReadWrite, Bitmap.PixelFormat);
+            Array.Clear(Pixels, 0, Pixels.Length);
+            Marshal.Copy(BitsHandle.AddrOfPinnedObject(), Pixels, 0, Pixels.Length);
+        }
+
+        public void UnlockBits()
+        {
+            Marshal.Copy(Pixels, 0, BitsHandle.AddrOfPinnedObject(), Pixels.Length);
+            Bitmap.UnlockBits(bitmapData);
+        }
+
+        public void SetPixel(int x, int y, Color colour)
+        {
+            int index = x + (y * Width);
+            int col = colour.ToArgb();
+
+            Pixels[index] = col;
+
+        }
+
+        public Color GetPixel(int x, int y)
+        {
+            int index = x + (y * Width);
+            int col = Pixels[index];
+            Color result = Color.FromArgb(col);
+
+            return result;
+        }
+
+        public void ClearColor(Int32 color)
+        {
+            for (int i = 0; i < Bits.Length; i++)
+            {
+                Bits[i] = color;
+                Pixels[i] = color;
+            }
+        }
+
+        public void Clear()
+        {
+            Array.Clear(Bits, 0, Bits.Length);
+            Array.Clear(Pixels, 0, Pixels.Length);
+        }
+
+        public void Dispose()
+        {
+            if (Disposed) return;
+            Disposed = true;
+            Bitmap.Dispose();
+            BitsHandle.Free();
+        }
+    }   
 }
