@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -17,10 +18,39 @@ namespace Graphics3D_v2
         }
     }
 
-    public abstract class Component
+    public class Component
     {
+        public virtual void Awake() { }
         public virtual void Start() { }
         public virtual void Update() { }
+        public virtual void FixedUpdate() { }
+        public virtual DirectBitmap OnPreRender(DirectBitmap image) { return image; }
+        public virtual DirectBitmap OnPostRender(DirectBitmap image) { return image; }
+
+        public void StartCoroutine(IEnumerator method)
+        {
+            Task task = new Task(async () =>
+            {
+                YieldInstruction instruction = null;
+                while (method.MoveNext())
+                {
+                    try
+                    {
+                        instruction = (YieldInstruction)method.Current?? new WaitForUpdate();
+                    }
+                    catch (InvalidCastException)
+                    {
+                        Console.WriteLine("Coroutine did not yield a YieldInstruction, continuing as if it returned WaitForUpdate");
+                        instruction = new WaitForUpdate();
+                    }
+                    finally
+                    {
+                        await instruction.beforeNext;
+                    }                        
+                }
+            });
+            task.Start();
+        }
 
         public Object3D object3D;
     }
@@ -31,12 +61,17 @@ namespace Graphics3D_v2
         public Mesh TransformedMesh {
             get; private set;
         }
+        public TransformUpdateDelegate updateMeshDelegate;
 
-        public override void Start()
+        public override void Awake()
         {
+            if(updateMeshDelegate == null)
+            {
+                updateMeshDelegate = UpdateMesh;
+            }
             TransformedMesh = new Mesh(mesh);
-            object3D.transform.transformUpdate = UpdateMesh;
-            UpdateMesh(TransformOps.All);
+            object3D.transform.transformUpdate = updateMeshDelegate;
+            updateMeshDelegate(TransformOps.All);
         }
 
         private void UpdateMesh(TransformOps ops)
@@ -71,6 +106,12 @@ namespace Graphics3D_v2
         public void FlatShader(Fragment f)
         {
             float fac = Vector3.Dot(f.faceNormal, -f.camera.transform.Forward);
+            f.color = Color.FromArgb(albedo.A, (byte)(fac * albedo.R), (byte)(fac * albedo.G), (byte)(fac * albedo.B));
+        }
+
+        public void SmoothShader(Fragment f)
+        {
+            float fac = Vector3.Dot(f.normal, -f.camera.transform.Forward);
             f.color = Color.FromArgb(albedo.A, (byte)(fac * albedo.R), (byte)(fac * albedo.G), (byte)(fac * albedo.B));
         }
 
@@ -365,6 +406,25 @@ namespace Graphics3D_v2
         }
     }
 
+    [RequireComponent(typeof(MeshComponent))]
+    public class RigComponent : Component
+    {
+        public Rig rig;
+        MeshComponent mc;
+        public override void Start()
+        {
+            mc = (MeshComponent)object3D.GetComponent(typeof(MeshComponent));
+            mc.updateMeshDelegate = UpdateMesh;
+        }
+
+        private void UpdateMesh(TransformOps ops)
+        {
+            //Probably want to point mc.updatemeshdelegate at nothing and then have this 
+            //be not an updatemeshdelegate and be called only when the pose changes
+            //then fuck with the transformedmesh
+        }
+    }
+
     public abstract class Renderer : Component
     {
         public abstract void Render(DirectBitmap b, Camera camera);
@@ -372,34 +432,227 @@ namespace Graphics3D_v2
 
     public class CameraComponent : Component
     {
-        private DirectBitmap b;
-        private object canvasLock;
+
         private Camera camera;
 
         public override void Start()
         {
             camera = (Camera)object3D;
-            object3D.scene.canvas = new DirectBitmap(camera.renderWidth, camera.renderHeight);
-            b = object3D.scene.canvas;
-            canvasLock = object3D.scene.canvasLock;
         }
-        public override void Update()
+
+        public override DirectBitmap OnPreRender(DirectBitmap image)
         {
-            lock (canvasLock)
+            image.LockBits();
+            image.ClearColor(GameManager.worldColor.ToArgb());
+            foreach (Object3D obj in GameManager.sceneObjects)
             {
-                b.LockBits();
-                b.ClearColor(object3D.scene.worldColor.ToArgb());
-                foreach (Object3D obj in object3D.scene.sceneObjects)
+                if (obj.visible && obj.components.Exists((x) => (x.BaseType == typeof(Renderer))))
                 {
-                    if (obj.visible && obj.components.Exists((x)=>(x.BaseType == typeof(Renderer))))
-                    {
-                        Renderer r = (Renderer)object3D.scene.componentInstances[obj].Find((x) => (x.GetType().BaseType == typeof(Renderer)));
-                        r.Render(b, camera);
-                    }
+                    Renderer r = (Renderer)GameManager.componentInstances[obj].Find((x) => (x.GetType().BaseType == typeof(Renderer)));
+                    r.Render(image, camera);
                 }
-                b.UnlockBits();
             }
-            object3D.scene.PaintEvent(b);
+            image.UnlockBits();
+            return image;
         }
+
+    }
+
+    public abstract class Collider : Component
+    {
+        public abstract Mesh mesh { get; protected set; }
+        public bool smoothMesh = false;
+
+        public virtual bool RayCast(Ray ray, out RayCastHit hit)
+        {
+            Triangle3 hitTriangle = new Triangle3();
+            Vector3 barycentricCoords;
+            Vector3 pt;
+            ray.direction.Normalize();
+            for (int face = 0; face < mesh.faces.GetLength(0); face++)
+            {
+                //Ignore faces where ray hits from behind
+                float rayNormalDot = Vector3.Dot(mesh.faceNormals[face], ray.direction);
+                if (rayNormalDot >= 0)
+                    continue;
+
+                float planeConst = Vector3.Dot(mesh.faceNormals[face], mesh.vertices[mesh.faces[face, 0]] + object3D.transform.Location);
+                float t = -(Vector3.Dot(mesh.faceNormals[face], ray.origin) + planeConst) / Vector3.Dot(mesh.faceNormals[face], ray.direction);
+                //Triangle is behind ray origin
+                if (t < 0)
+                    continue;
+                pt = ray.origin + (t * ray.direction);
+
+                hitTriangle.v0 = mesh.vertices[mesh.faces[face, 0]] + object3D.transform.Location;
+                hitTriangle.v1 = mesh.vertices[mesh.faces[face, 1]] + object3D.transform.Location;
+                hitTriangle.v2 = mesh.vertices[mesh.faces[face, 2]] + object3D.transform.Location;
+                hitTriangle.vn0 = mesh.vertexNormalCoords[mesh.vertexNormals[face, 0]];
+                hitTriangle.vn1 = mesh.vertexNormalCoords[mesh.vertexNormals[face, 1]];
+                hitTriangle.vn2 = mesh.vertexNormalCoords[mesh.vertexNormals[face, 2]];
+                hitTriangle.uv0 = mesh.uvcoords[mesh.uvs[face, 0]];
+                hitTriangle.uv1 = mesh.uvcoords[mesh.uvs[face, 1]];
+                hitTriangle.uv2 = mesh.uvcoords[mesh.uvs[face, 2]];
+                hitTriangle.normal = mesh.faceNormals[face];
+
+
+                barycentricCoords = hitTriangle.GetBarycentricCoordinates(pt, out bool inTri);
+                if (inTri)
+                {
+                    hit = new RayCastHit { hit = pt, barycentricCoordinates = barycentricCoords, collider = this, distance = t, normal = (smoothMesh ? hitTriangle.NormalAt(pt) : hitTriangle.normal), triangle = hitTriangle };
+                    return true;
+                }
+            }
+            hit = null;
+            return false;
+        }
+        public virtual float DistanceToColliderSurface(Vector3 direction)
+        {
+            Triangle3 hitTriangle = new Triangle3();
+            Vector3 pt;
+            direction.Normalize();
+            for (int face = 0; face < mesh.faces.GetLength(0); face++)
+            {
+                if (face == mesh.faces.GetLength(0) - 1)
+                    Console.WriteLine("vertex: " + mesh.vertices[0]);
+                //all normals should be negative
+                float rayNormalDot = Vector3.Dot(mesh.faceNormals[face], direction);
+                //Console.WriteLine(rayNormalDot);
+                //>=
+                if (rayNormalDot == 0)
+                    continue;
+                float planeConst = Vector3.Dot(mesh.faceNormals[face], mesh.vertices[mesh.faces[face, 0]]);
+                float t = -(Vector3.Dot(mesh.faceNormals[face], object3D.transform.Location) + planeConst) / rayNormalDot;
+                //Triangle is behind ray origin
+                if (t < 0)
+                    continue;           
+
+                pt = object3D.transform.Location + (t * direction);
+
+                hitTriangle.v0 = mesh.vertices[mesh.faces[face, 0]];
+                hitTriangle.v1 = mesh.vertices[mesh.faces[face, 1]];
+                hitTriangle.v2 = mesh.vertices[mesh.faces[face, 2]];
+                hitTriangle.normal = mesh.faceNormals[face];
+                if (hitTriangle.InsideTriangle(pt))
+                {
+                    return t;
+                }
+                
+            }
+            throw new Exception("no hit");
+        }
+    }
+
+    public class BoxCollider : Collider
+    {
+        public override Mesh mesh { get; protected set; }
+        private Mesh staticMesh;
+        private TransformUpdateDelegate updateMeshDelegate;
+
+        public Transform originalTransform;
+
+        public override void Awake()
+        {
+            staticMesh = new Mesh(@"..\..\Resources\Cube.obj");
+            for (int i = 0; i < mesh.vertices.Length; i++)
+            {
+                staticMesh.vertices[i] = originalTransform.Rotation.RotateVector3(staticMesh.vertices[i] * originalTransform.Scale) + originalTransform.Location;
+                if (i < staticMesh.vertexNormalCoords.Length)
+                    staticMesh.vertexNormalCoords[i] = originalTransform.Rotation.RotateVector3(staticMesh.vertexNormalCoords[i] * originalTransform.Scale) + originalTransform.Location;
+            }
+            staticMesh.CalculateFaceNormals();
+
+            if (updateMeshDelegate == null)
+            {
+                updateMeshDelegate = UpdateMesh;
+            }
+            mesh = new Mesh(staticMesh);
+            object3D.transform.transformUpdate = updateMeshDelegate;
+            updateMeshDelegate(TransformOps.All);
+        }
+
+        private void UpdateMesh(TransformOps ops)
+        {
+            for (int i = 0; i < mesh.vertices.Length; i++)
+            {
+                mesh.vertices[i] = object3D.transform.Rotation.RotateVector3(staticMesh.vertices[i] * object3D.transform.Scale) + object3D.transform.Location;
+                if (i < staticMesh.vertexNormalCoords.Length)
+                    mesh.vertexNormalCoords[i] = object3D.transform.Rotation.RotateVector3(staticMesh.vertexNormalCoords[i] * object3D.transform.Scale) + object3D.transform.Location;
+            }
+
+            if ((ops & TransformOps.Rotation) != 0)
+            {
+                mesh.CalculateFaceNormals();
+            }
+        }
+    }
+
+    [RequireComponent(typeof(MeshComponent))]
+    public class MeshCollider : Collider
+    {
+        private MeshComponent mc;
+
+        public override Mesh mesh {
+            get { return mc.TransformedMesh; }
+            protected set { }
+        }
+
+        public override void Awake()
+        {
+            mc = (MeshComponent)object3D.GetComponent(typeof(MeshComponent));
+        }
+    }
+
+    public class AxisAllignedBoundingBox : Component
+    {
+        public AxisAllignedBoundingBox(Vector3 max, Vector3 min)
+        {
+            this.max = max; this.min = min;
+        }
+
+        public Vector3 max;
+        public Vector3 min;
+
+        public bool CollidingWith(AxisAllignedBoundingBox other)
+        {
+            return (max.x >= other.min.x && min.x <= other.max.x)
+                && (max.y >= other.min.y && min.y <= other.max.y)
+                && (max.z >= other.min.z && min.z <= other.max.z);
+        }
+        
+        public RigidBody GetRigidBody()
+        {
+            return (RigidBody)object3D.GetComponent(typeof(RigidBody));
+        }
+    }
+
+    [RequireComponent(typeof(Collider))]
+    public class RigidBody : Component
+    {
+        public float mass = 1;
+        public Vector3 velocity = Vector3.Zero;
+        public Vector3 Acceleration { get { return (1 / mass) * netForce; } }
+        public Vector3 netForce = Vector3.Zero;
+        public bool updateInternally = true;
+        public bool Static = false;
+
+        public void AddForce(Vector3 force)
+        {
+            AddForce(force, ForceMode.Force);
+        }
+        public void AddForce(Vector3 force, ForceMode mode)
+        {
+            switch (mode)
+            {
+                case ForceMode.Velocity:
+                    velocity += force;
+                    break;
+                case ForceMode.Acceleration:
+                    netForce += mass * force;
+                    break;
+                case ForceMode.Force:
+                    netForce += force;
+                    break;
+            }
+        }        
     }
 }

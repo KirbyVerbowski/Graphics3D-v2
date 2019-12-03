@@ -48,7 +48,7 @@ namespace Graphics3D_v2
         public float screenNormCoeffX;
         public float screenNormCoeffZ;
 
-        public Camera(SceneManager manager, Transform transform, int width, int height, float horizFOV) : base(manager, transform)
+        public Camera(Transform transform, int width, int height, float horizFOV) : base(transform)
         {
             renderHeight = height;
             renderWidth = width;
@@ -81,20 +81,7 @@ namespace Graphics3D_v2
         public Vector3 beforeClip1, beforeClip2, beforeClip3;
 
         public Triangle projectedTriangle = new Triangle();
-        public List<Vector3> drawPoints = new List<Vector3>();
-
-       
-       
-
-        private void DefaultVertShader(Vertex vertex)
-        {
-            //Do nothing
-        }
-
-
-       
-        
-    
+        public List<Vector3> drawPoints = new List<Vector3>();    
     }
 
 }

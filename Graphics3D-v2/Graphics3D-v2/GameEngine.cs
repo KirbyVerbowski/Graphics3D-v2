@@ -16,6 +16,7 @@ namespace Graphics3D_v2
         static void Main(string[] args)
         {
             GameEngine engine = new GameEngine(512, 256);
+            Thread.CurrentThread.Name = "Main";
             engine.Main();
             Application.Run(engine);   
         }        
@@ -23,48 +24,58 @@ namespace Graphics3D_v2
 
     class GameEngine : Form
     {
-        SceneManager manager;
-        DirectBitmap image;
-        object imageLock;
 
         public GameEngine(int windowWidth, int windowHeight)
         {
+            FormClosed += (e, s) => { Environment.Exit(0); };
             Width = windowWidth;
             Height = windowHeight;
-            imageLock = new object();
-            manager = new SceneManager(imageLock);
-            image = new DirectBitmap(1, 1);
-            manager.PaintEvent = ((x) => { image = x; Invalidate(); });
+            GameManager.Initialize(windowWidth, windowHeight);
+            Physics.Initialize();
+            Time.OnPaintEvent = async (x) => { GameEngine_Paint2(); };
             DoubleBuffered = true;
 
             Input.SetForm(this);
-            Paint += GameEngine_Paint;
         }
 
         public void Main()
         {
-            Camera maincamera = new Camera(manager, new Transform(new Vector3(0, -7, 0)), 512, 256, 0.7853f);
+            Camera maincamera = new Camera(new Transform(new Vector3(0, -25, 0)), 512, 256, 0.7853f);
             maincamera.AddComponent(new CameraComponent());
-            Object3D sphere = new Object3D(manager, new Transform(new Vector3(0.5f, 0, 0)));
-            sphere.AddComponent(new MeshComponent { mesh = new Mesh(@"\Users\Kirby\Desktop\icosphere2.obj") });
+            Object3D sphere = new Object3D(new Transform(new Vector3(0.5f, 0, 0)));
+            sphere.name = "Sphere";
+            sphere.AddComponent(new MeshComponent { mesh = new Mesh(@"..\..\Resources\Cylinder.obj") });
             sphere.AddComponent(new MyScript());
             sphere.AddComponent(new MeshRenderer { albedo = Color.Red });
+            sphere.AddComponent(new MeshCollider());
+            //sphere.AddComponent(new RigidBody());
 
+            Object3D ground = new Object3D(new Transform(new Vector3(3, 0, 0)));
+            ground.name = "Ground";
+            ground.AddComponent(new MeshComponent { mesh = new Mesh(@"..\..\Resources\Cylinder.obj") });
+            ground.AddComponent(new MeshRenderer { albedo = Color.Gray });
+            ground.AddComponent(new MeshCollider());
 
-            manager.AddObject(maincamera);
-            manager.AddObject(sphere);
-            manager.Start();
+            //sphere.AddComponent(new RigidBody());
+
+            // Rig r = new Rig(@"\Users\Kirby\Desktop\CylinderRig.rig");
+            // Console.WriteLine(r.root.name);
+
+            GameManager.AddObject(maincamera);
+            GameManager.AddObject(sphere);
+            GameManager.AddObject(ground);
+            //manager.AddObject(sphere2);
+
+            Time.Start();
         }
 
-        private void GameEngine_KeyDown(object sender, KeyEventArgs e)
-        { }
-
-        private void GameEngine_Paint(object sender, PaintEventArgs e)
+        private void GameEngine_Paint2()
         {
-            lock (imageLock)
+            using(Graphics g = CreateGraphics())
             {
-                e.Graphics.DrawImage(image.Bitmap, new Point(0, 0));
-            }            
+                g.DrawImage(GameManager.canvas.Bitmap, new Point(0, 0));
+            }
         }
+
     }
 }

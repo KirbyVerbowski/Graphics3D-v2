@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Windows.Forms;
 using System.Drawing;
-using System.Collections.Generic;
+using System.Collections;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,21 +14,58 @@ namespace Graphics3D_v2
         public float angle = 0.15f;
         MeshRenderer mr;
         int color = Color.Black.ToArgb();
+        int i = 0;
 
         public override void Start()
         {
+            //throw new NullReferenceException();
             mr = (MeshRenderer)object3D.GetComponent(typeof(MeshRenderer));
+            //StartCoroutine(MyFirstCoroutine());
+            Ray ray = new Ray(new Vector3(0.5f, -25, 0), Vector3.UnitVectorY);
+            if (Physics.RayCast(ray, out RayCastHit hit))
+            {
+                Console.WriteLine("obj: " + hit.collider.object3D.name);
+                Console.WriteLine("hit: " + hit.hit);
+            }
+                //if(Physics.RayCastAll(ray, out RayCastHit[] hits)){
+                //    foreach(RayCastHit hit in hits)
+                //    {
+
+                //        Console.WriteLine(hit.collider.object3D.name);
+                //        Console.WriteLine("normal: " + hit.normal);
+                //        Console.WriteLine("pos: " + hit.hit);
+                //    }
+                //}
+                MeshCollider c = (MeshCollider)object3D.GetComponent(typeof(MeshCollider));
+            Console.WriteLine(c.DistanceToColliderSurface(Vector3.UnitVectorX));
         }
 
         public override void Update()
         {
+
+            //Console.WriteLine("update");
             if (Input.KeyHeld(Keys.K))
             {
                 Console.WriteLine(angle);
             }
             object3D.transform.Rotate(Vector3.UnitVectorZ, angle);
-            color += 0xF;
-            mr.albedo = Color.FromArgb(color);
+            //color += 0xF;
+            //mr.albedo = Color.FromArgb(color);
+        }
+
+        public IEnumerator MyFirstCoroutine()
+        {
+            for(int i = 0; i < 10; i++)
+            {
+                Console.WriteLine(i);
+                yield return null;
+            }
+        }
+
+        public override void FixedUpdate()
+        {
+            //throw new NullReferenceException("yeet");
+            //Console.WriteLine("fiexdupdate");
         }
     }
 

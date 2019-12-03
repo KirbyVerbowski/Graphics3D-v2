@@ -25,6 +25,27 @@ namespace Graphics3D_v2
         }
     }
 
+    public class Ray
+    {
+        public Vector3 origin;
+        public Vector3 direction;
+
+        public Ray(Vector3 origin, Vector3 direction)
+        {
+            this.origin = origin; this.direction = direction;
+        }
+    }
+
+    public class RayCastHit
+    {
+        public Vector3 hit;
+        public Collider collider;
+        public Vector3 barycentricCoordinates;
+        public float distance;
+        public Vector3 normal;
+        public Triangle3 triangle;
+    }
+
     public struct Vector2
     {
 
@@ -452,6 +473,7 @@ namespace Graphics3D_v2
         public readonly Vector2[] uvcoords;
         public readonly string name;
         public Vector3[] faceNormals;
+        public readonly Dictionary<string, int[]> groups;
 
         public void CalculateFaceNormals()
         {
@@ -469,6 +491,7 @@ namespace Graphics3D_v2
 
         public Mesh(Vector3[] vertices, int[,] faces, int[,] edges, string name)
         {
+            this.groups = new Dictionary<string, int[]>();
             this.vertices = new Vector3[vertices.Length];
             this.faces = new int[faces.GetLength(0), 3];
             this.edges = new int[edges.GetLength(0), 2];
@@ -501,10 +524,16 @@ namespace Graphics3D_v2
             edges = other.edges.Clone() as int[,];
             uvcoords = other.uvcoords.Clone() as Vector2[];
             uvs = other.uvs.Clone() as int[,];
+            groups = new Dictionary<string, int[]>();
+            foreach(string entry in other.groups.Keys)
+            {
+                groups.Add(entry.Clone() as string, other.groups[entry].Clone() as int[]);
+            }
             name = other.name;
         }
         public Mesh(string path)
         {
+            groups = new Dictionary<string, int[]>();
             string line;
             string[] words;
             char[] lineCh;
@@ -517,6 +546,7 @@ namespace Graphics3D_v2
             List<Vector2> uvcoords = new List<Vector2>();
             List<int[]> uvs = new List<int[]>();
             List<int[]> vertexNormals = new List<int[]>();
+            List<int> groupVerts = new List<int>();
             int face = 0;
             System.IO.StreamReader stream = new System.IO.StreamReader(path);
 
@@ -630,7 +660,14 @@ namespace Graphics3D_v2
                         uvcoords.Add(temp2);
                         break;
 
-
+                    case "g":
+                        groupVerts.Clear();
+                        foreach(string s in words[2].Split('/'))
+                        {
+                            groupVerts.Add(int.Parse(s) - 1);
+                        }
+                        groups.Add(words[2], groupVerts.ToArray());
+                        break;
 
                     case "o":
                         name = words[1];
@@ -697,6 +734,119 @@ namespace Graphics3D_v2
         }
     }
 
+    public class Bone
+    {
+        public string name;
+        public float length;
+        public Bone parent;
+        public List<Bone> children;
+        public Transform transform;
+
+        public void TransformUpdate(TransformOps ops)
+        {
+
+        }
+    }
+
+    public class Rig
+    {
+        public Bone root;
+
+        public Rig(string path)
+        {
+            List<Bone> bones = new List<Bone>();
+            List<string> parents = new List<string>();
+            List<List<string>> childs = new List<List<string>>();
+            Bone bone = null;
+            System.IO.StreamReader stream = new System.IO.StreamReader(path);
+            string line;
+            string[] words;
+            while ((line = stream.ReadLine()) != null)
+            {
+                if (line == "\n")
+                    continue;
+                Regex reg = new Regex(@"\s+");
+                line = reg.Replace(line, " ");
+
+                words = line.Split(' ');
+                switch (words[0])
+                {
+                    case "name":
+                        if(bone != null)
+                        {
+                            bones.Add(bone);
+                        }
+                        bone = new Bone();
+                        bone.transform = new Transform();
+                        bone.name = words[1];
+                        break;
+
+                    case "rot":
+                        bone.transform.Rotation = new Quaternion(float.Parse(words[1]), float.Parse(words[2]), float.Parse(words[3]), float.Parse(words[4]));
+                        break;
+
+                    case "loc":
+                        bone.transform.Location = new Vector3(float.Parse(words[1]), float.Parse(words[2]), float.Parse(words[3]));
+                        break;
+
+                    case "len":
+                        bone.length = float.Parse(words[1]);
+                        break;
+
+                    case "parent":
+                        parents.Add(words[1]);
+                        break;
+
+                    case "children":
+                        List<string> children = new List<string>();
+                        for(int i = 1; i < words.Length; i++)
+                        {
+                            children.Add(words[i]);
+                        }
+                        childs.Add(children);
+                        break;
+                }
+            }
+            stream.Close();
+            for(int i = 0; i < bones.Count; i++)
+            {
+                //Set parents
+                if(parents[i] == "None")
+                {
+                    root = bones[i];
+                    bones[i].parent = null;
+                }
+                for(int j = 0; j < bones.Count; j++)
+                {
+                    if(bones[j].name == parents[i])
+                    {
+                        bones[i].parent = bones[j];
+                        break;
+                    }
+                }
+
+                //Set children
+                bones[i].children = new List<Bone>();
+                foreach(string name in childs[i])
+                {
+                    if(name == "None")
+                    {
+                        break;
+                    }
+                    for(int j = 0; j < bones.Count; j++)
+                    {
+                        if(bones[j].name == name)
+                        {
+                            bones[i].children.Add(bones[j]);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
     public class Fragment
     {
         public Vector2 uv;
@@ -745,6 +895,11 @@ namespace Graphics3D_v2
         {
             _Location = location;
             _Scale = scale;
+            _Rotation = rotation;
+        }
+        public Transform(Vector3 location, Quaternion rotation)
+        {
+            _Location = location;
             _Rotation = rotation;
         }
         public Transform(Vector3 location, Vector3 scale)
@@ -890,6 +1045,91 @@ namespace Graphics3D_v2
         public float ZAt(Vector3 baryCentricCoords)
         {
             return z0 * baryCentricCoords.x + z1 * baryCentricCoords.y + z2 * baryCentricCoords.z;
+        }
+
+        public override string ToString()
+        {
+            return "(" + v0 + v1 + v2 + ")";
+        }
+    }
+
+    public class Triangle3
+    {
+        public Vector3 v0, v1, v2;
+        public Vector2 uv0, uv1, uv2;
+        public Vector3 vn0, vn1, vn2;
+        public Vector3 normal;
+        public Vector3[] Points {
+            get { return new Vector3[] { v0, v1, v2 }; }
+        }
+        public Triangle3(Vector3 v0, Vector3 v1, Vector3 v2, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector3 vn0, Vector3 vn1, Vector3 vn2, Vector3 normal)
+        {
+            this.v0 = v0; this.v1 = v1; this.v2 = v2;
+            this.uv0 = uv0; this.uv1 = uv1; this.uv2 = uv2;
+            this.vn0 = vn0; this.vn1 = vn1; this.vn2 = vn2;
+            this.normal = normal;
+        }
+
+        public Triangle3()
+        {
+            v0 = Vector3.Zero; v1 = Vector3.Zero; v2 = Vector3.Zero;
+            uv0 = Vector2.Zero; uv1 = Vector2.Zero; uv2 = Vector2.Zero;
+            vn0 = Vector3.Zero; vn1 = Vector3.Zero; vn2 = Vector3.Zero;
+            normal = Vector3.Zero;
+        }
+
+        private float EdgeFunction(Vector3 a, Vector3 b, Vector3 c, out bool result)
+        {
+            Vector3 cross = Vector3.Cross(a - b, c - b);
+            float fresult = -Vector3.Dot(normal, cross);
+            //float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+            result = fresult >= 0;
+            return fresult;
+        }
+        private float EdgeFunction(Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 cross = Vector3.Cross(a - b, c - b);
+            float fresult = -Vector3.Dot(normal, cross);
+            //float fresult = -((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
+            return fresult;
+        }
+
+        public bool InsideTriangle(Vector3 point)
+        {
+            EdgeFunction(v0, v1, point, out bool result1);
+            EdgeFunction(v1, v2, point, out bool result2);
+            EdgeFunction(v2, v0, point, out bool result3);
+            return result1 && result2 && result3;
+        }
+
+        public Vector3 GetBarycentricCoordinates(Vector3 point)
+        {
+            float area = EdgeFunction(v0, v1, v2);
+            float w0 = EdgeFunction(v1, v2, point);
+            float w1 = EdgeFunction(v2, v0, point);
+            float w2 = EdgeFunction(v0, v1, point);
+            return new Vector3(w0 / area, w1 / area, w2 / area);
+        }
+        public Vector3 GetBarycentricCoordinates(Vector3 point, out bool inTri)
+        {
+            float area = EdgeFunction(v0, v1, v2);
+            float w0 = EdgeFunction(v1, v2, point, out bool res1);
+            float w1 = EdgeFunction(v2, v0, point, out bool res2);
+            float w2 = EdgeFunction(v0, v1, point, out bool res3);
+            inTri = res1 && res2 && res3;
+            return new Vector3(w0 / area, w1 / area, w2 / area);
+        }
+
+        public Vector3 NormalAt(Vector3 pt)
+        {
+            Vector3 baryCoords = GetBarycentricCoordinates(pt);
+            return vn0 * baryCoords.x + vn1 * baryCoords.y + vn2 * baryCoords.z;
+        }
+
+        public Vector2 UVAt(Vector3 pt)
+        {
+            Vector3 baryCoords = GetBarycentricCoordinates(pt);
+            return uv0 * baryCoords.x + uv1 * baryCoords.y + uv2 * baryCoords.z;
         }
 
         public override string ToString()
