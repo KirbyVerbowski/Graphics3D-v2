@@ -13,16 +13,48 @@ namespace Graphics3D_v2
     public delegate void FragmentShaderDelegate(Fragment f);
     public delegate void VertexShaderDelegate(Vertex v);
 
-    public static class MathConst
+    public static class Mathf
     {
+        private static Random r = new Random();
+
         public const float DEG2RAD = 0.0174533f;
         public const float RAD2DEG = 57.2958f;
         public const float EPSILON = 1E-3f;
         public static Vector3 RandomOnUnitSphere()
         {
-            Random rand = new Random();
-            return (new Vector3(rand.Next(-360, 361), rand.Next(-360, 361), rand.Next(-360, 361))).Normalized;
+            return (new Vector3(r.Next(-360, 361), r.Next(-360, 361), r.Next(-360, 361))).Normalized;
         }
+
+        public static float Random01()
+        {
+            return (float)r.NextDouble();
+        }
+        public static int Randint(int min, int max)
+        {
+            return r.Next(min, max);
+        }
+
+        static bool solveQuadratic(float a, float b, float c, ref float x0, ref float x1) 
+        { 
+            float discr = b * b - 4 * a * c;
+            if (discr < 0) return false;
+            else if (discr == 0) x0 = x1 = -0.5f * b / a;
+            else {
+                float q = (b > 0) ?
+                    -0.5f * (b + (float)Math.Sqrt(discr)) :
+                    -0.5f * (b - (float)Math.Sqrt(discr));
+                x0 = q / a;
+                x1 = c / q;
+            }
+            if (x0 > x1)
+            {
+                float temp = x1;
+                x1 = x0;
+                x0 = temp;
+            } 
+ 
+            return true; 
+        } 
     }
 
     public class Ray
@@ -124,11 +156,11 @@ namespace Graphics3D_v2
 
         public static bool operator ==(Vector2 v1, Vector2 v2)
         {
-            return (Math.Abs(v1.x - v2.x) < MathConst.EPSILON && Math.Abs(v1.y - v2.y) < MathConst.EPSILON);
+            return (Math.Abs(v1.x - v2.x) < Mathf.EPSILON && Math.Abs(v1.y - v2.y) < Mathf.EPSILON);
         }
         public static bool operator !=(Vector2 v1, Vector2 v2)
         {
-            return (Math.Abs(v1.x - v2.x) >= MathConst.EPSILON || Math.Abs(v1.y - v2.y) >= MathConst.EPSILON);
+            return (Math.Abs(v1.x - v2.x) >= Mathf.EPSILON || Math.Abs(v1.y - v2.y) >= Mathf.EPSILON);
         }
         public static Vector2 operator +(Vector2 v1, Vector2 v2)
         {
@@ -306,11 +338,11 @@ namespace Graphics3D_v2
 
         public static bool operator ==(Vector3 v1, Vector3 v2)
         {
-            return (Math.Abs(v1.x - v2.x) < MathConst.EPSILON && Math.Abs(v1.y - v2.y) < MathConst.EPSILON && Math.Abs(v1.z - v2.z) < MathConst.EPSILON);
+            return (Math.Abs(v1.x - v2.x) < Mathf.EPSILON && Math.Abs(v1.y - v2.y) < Mathf.EPSILON && Math.Abs(v1.z - v2.z) < Mathf.EPSILON);
         }
         public static bool operator !=(Vector3 v1, Vector3 v2)
         {
-            return (Math.Abs(v1.x - v2.x) >= MathConst.EPSILON || Math.Abs(v1.y - v2.y) >= MathConst.EPSILON || Math.Abs(v1.z - v2.z) >= MathConst.EPSILON);
+            return (Math.Abs(v1.x - v2.x) >= Mathf.EPSILON || Math.Abs(v1.y - v2.y) >= Mathf.EPSILON || Math.Abs(v1.z - v2.z) >= Mathf.EPSILON);
         }
         public static Vector3 operator +(Vector3 v1, Vector3 v2)
         {
@@ -400,7 +432,7 @@ namespace Graphics3D_v2
             private set { }
         }
         public bool IsUnitQuaternion {
-            get { return (Math.Pow(w, 2) + Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2)) - 1 < MathConst.EPSILON; }
+            get { return (Math.Pow(w, 2) + Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2)) - 1 < Mathf.EPSILON; }
             private set { }
         }
 
@@ -901,6 +933,7 @@ namespace Graphics3D_v2
         {
             _Location = location;
             _Rotation = rotation;
+            _Scale = Vector3.One;
         }
         public Transform(Vector3 location, Vector3 scale)
         {
@@ -937,7 +970,7 @@ namespace Graphics3D_v2
         public void Rotate(Quaternion rotBy)
         {
             rotBy = rotBy.Conjugate;
-            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
+            if (this.Rotation.SqrMagnitude < Mathf.EPSILON)
             {
                 this.Rotation = rotBy * Quaternion.Identity;
             }
@@ -949,7 +982,7 @@ namespace Graphics3D_v2
         public void Rotate(Vector3 axis, float angle)
         {
             Quaternion rotBy = new Quaternion(axis, angle).Conjugate;
-            if (this.Rotation.SqrMagnitude < MathConst.EPSILON)
+            if (this.Rotation.SqrMagnitude < Mathf.EPSILON)
             {
                 this.Rotation = rotBy * Quaternion.Identity;
             }

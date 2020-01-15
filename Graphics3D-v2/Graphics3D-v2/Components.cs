@@ -24,6 +24,9 @@ namespace Graphics3D_v2
         public virtual void Start() { }
         public virtual void Update() { }
         public virtual void FixedUpdate() { }
+        public virtual void OnTriggerEnter(Collider other) { }
+        public virtual void OnTriggerStay(Collider other) { }
+        public virtual void OnTriggerExit(Collider other) { }
         public virtual DirectBitmap OnPreRender(DirectBitmap image) { return image; }
         public virtual DirectBitmap OnPostRender(DirectBitmap image) { return image; }
 
@@ -36,7 +39,7 @@ namespace Graphics3D_v2
                 {
                     try
                     {
-                        instruction = (YieldInstruction)method.Current?? new WaitForUpdate();
+                        instruction = (YieldInstruction)method.Current ?? new WaitForUpdate();
                     }
                     catch (InvalidCastException)
                     {
@@ -46,7 +49,7 @@ namespace Graphics3D_v2
                     finally
                     {
                         await instruction.beforeNext;
-                    }                        
+                    }
                 }
             });
             task.Start();
@@ -65,7 +68,7 @@ namespace Graphics3D_v2
 
         public override void Awake()
         {
-            if(updateMeshDelegate == null)
+            if (updateMeshDelegate == null)
             {
                 updateMeshDelegate = UpdateMesh;
             }
@@ -330,7 +333,7 @@ namespace Graphics3D_v2
 
             //Console.WriteLine(transform.Rotation.RotateVector3(obj.transform.Location - camPos));
             fShader = (fShader ?? FlatShader);
-            vShader = (vShader ?? new VertexShaderDelegate((x)=> { }));
+            vShader = (vShader ?? new VertexShaderDelegate((x) => { }));
             for (int face = 0; face < mesh.faces.GetLength(0); face++)
             {
                 float dot;
@@ -524,7 +527,7 @@ namespace Graphics3D_v2
                 float t = -(Vector3.Dot(mesh.faceNormals[face], object3D.transform.Location) + planeConst) / rayNormalDot;
                 //Triangle is behind ray origin
                 if (t < 0)
-                    continue;           
+                    continue;
 
                 pt = object3D.transform.Location + (t * direction);
 
@@ -536,7 +539,7 @@ namespace Graphics3D_v2
                 {
                     return t;
                 }
-                
+
             }
             throw new Exception("no hit");
         }
@@ -586,6 +589,56 @@ namespace Graphics3D_v2
         }
     }
 
+    public class SphereCollider : Collider
+    {
+        public override Mesh mesh { get { return null; } protected set { } }
+        public float radius = 3;
+
+        public override bool RayCast(Ray ray, out RayCastHit hit)
+        {
+            ray.direction.Normalize();
+            hit = null;
+            float t0, t1; // solutions for t if the ray intersects 
+
+            // geometric solution
+            Vector3 L = object3D.transform.Location - ray.origin;
+            float tca = Vector3.Dot(L, ray.direction);
+            if (tca < 0) return false;
+            float d2 = Vector3.Dot(L, L) - tca * tca;
+            if (d2 > radius) return false;
+            float thc = (float)Math.Sqrt(radius - d2);
+            t0 = tca - thc;
+            t1 = tca + thc;
+
+            if (t0 > t1)
+            {
+                float temp = t1;
+                t1 = t0;
+                t0 = temp;
+            }
+
+
+            if (t0 < 0)
+            {
+                t0 = t1; // if t0 is negative, let's use t1 instead 
+                if (t0 < 0) return false; // both t0 and t1 are negative 
+            }
+
+            hit = new RayCastHit
+            {
+                collider = this,
+                distance = t0,
+                hit = ray.origin + t0 * ray.direction,
+                normal = ray.origin + t0 * ray.direction - object3D.transform.Location,
+            };
+            return true;
+        }
+        public override float DistanceToColliderSurface(Vector3 direction)
+        {
+            return radius;
+        }
+    }
+
     [RequireComponent(typeof(MeshComponent))]
     public class MeshCollider : Collider
     {
@@ -618,7 +671,7 @@ namespace Graphics3D_v2
                 && (max.y >= other.min.y && min.y <= other.max.y)
                 && (max.z >= other.min.z && min.z <= other.max.z);
         }
-        
+
         public RigidBody GetRigidBody()
         {
             return (RigidBody)object3D.GetComponent(typeof(RigidBody));
@@ -653,6 +706,7 @@ namespace Graphics3D_v2
                     netForce += force;
                     break;
             }
-        }        
+        }
     }
+    
 }

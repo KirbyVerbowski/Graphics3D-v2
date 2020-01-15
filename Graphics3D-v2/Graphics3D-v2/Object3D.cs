@@ -396,12 +396,13 @@ namespace Graphics3D_v2
 
         private static void Form_MouseUp(object sender, MouseEventArgs e)
         {
-            keyDownList[(int)e.Button] = false;
+            keyDownList[(int)e.Button >> 16] = false;
         }
 
         private static void Form_MouseDown(object sender, MouseEventArgs e)
         {
-            keyDownList[(int)e.Button] = true;
+            keyDownList[(int)e.Button >> 16] = true;
+            
         }
 
         private static void Form_MouseMove(object sender, MouseEventArgs e)
@@ -583,45 +584,56 @@ namespace Graphics3D_v2
             Vector3 nextPos = Vector3.Zero;
             float distanceToColliderFront = 0;
 
-
             foreach (RigidBody r in GameManager.GetAllComponents(typeof(RigidBody)))
             {
-                if (!r.Static)
+
+            }
+
+
+                /*foreach (RigidBody r in GameManager.GetAllComponents(typeof(RigidBody)))
                 {
-                    bool doCollision = (r.velocity != Vector3.Zero);
-
-                    objCollider = (Collider)r.object3D.GetComponent(typeof(Collider));
-                    Console.WriteLine(objCollider.GetType());
-                    nextPos = r.object3D.transform.Location + r.velocity * (float)Time.fixedDeltaTime;
-
-                    if(doCollision)
-                        distanceToColliderFront = objCollider.DistanceToColliderSurface(r.velocity);
-                    //Do Collision detection based on next position
-
-                    if (doCollision && RayCast(new Ray(r.object3D.transform.Location + r.velocity.Normalized * distanceToColliderFront, r.velocity), out RayCastHit hit, objCollider))
+                    if (!r.Static)
                     {
-                        r.object3D.transform.Location += r.velocity.Normalized * (hit.distance - distanceToColliderFront - 0.0001f);
-                        r.velocity = Vector3.Zero;
-                        r.netForce = Vector3.Zero;
-                        Console.WriteLine("Collision");
-                        r.Static = true;
+                        bool doCollision = (r.velocity != Vector3.Zero);
+
+                        objCollider = (Collider)r.object3D.GetComponent(typeof(Collider));
+                        nextPos = r.object3D.transform.Location + r.velocity * (float)Time.fixedDeltaTime;
+
+                        if(doCollision)
+                            distanceToColliderFront = objCollider.DistanceToColliderSurface(r.velocity);
+                        //Do Collision detection based on next position
+
+                        if (doCollision && RayCast(new Ray(r.object3D.transform.Location + r.velocity.Normalized * distanceToColliderFront, r.velocity), out RayCastHit hit, objCollider))
+                        {
+                            Console.WriteLine(hit.distance);
+                            r.object3D.transform.Location += r.velocity.Normalized * (hit.distance - 0.0001f);
+                            r.velocity = Vector3.Zero;
+                            r.netForce = Vector3.Zero;
+                            Console.WriteLine("Collision");
+                            Console.WriteLine(r.object3D.transform.Location + " " + r.object3D.name);
+                            r.Static = true;
+                        }
+                        else
+                        {
+                            //Move object
+                            r.object3D.transform.Location = nextPos;
+                            //Apply gravity
+                            r.netForce += r.mass * -Vector3.UnitVectorZ * gravity;
+                            //Update velocity vector
+                            r.velocity += r.Acceleration * (float)Time.fixedDeltaTime;
+                        }
+
+
                     }
                     else
                     {
-                        //Move object
-                        r.object3D.transform.Location = nextPos;
-                        //Apply gravity
-                        r.netForce += r.mass * -Vector3.UnitVectorZ * gravity;
-                        //Update velocity vector
-                        r.velocity += r.Acceleration * (float)Time.fixedDeltaTime;
+                        //Would be way easier with OnCollisionEnter/Exit/Stay
+                        if(RayCast(new Ray(r.object3D.transform.Location * distanceToColliderFront, r.velocity), out RayCastHit hit, objCollider))
                     }
 
-                    
-                }
-                
-            }
+                }*/
 
-            return Task.CompletedTask;
+                return Task.CompletedTask;
         }
 
         public static bool RayCast(Ray ray, out RayCastHit hit)
@@ -672,11 +684,15 @@ namespace Graphics3D_v2
             }
         }
 
+
+        /// 
+        ///  HARDCODED TO SPHERECOLLIDER
+        /// 
         public static bool RayCastAll(Ray ray, out RayCastHit[] hits)
         {
             bool hitResult = false;
             List<RayCastHit> hitList = new List<RayCastHit>();
-            foreach(MeshCollider collider in GameManager.GetAllComponents(typeof(MeshCollider)))
+            foreach(SphereCollider collider in GameManager.GetAllComponents(typeof(SphereCollider)))
             {
                 if(collider.RayCast(ray, out RayCastHit hit))
                 {
